@@ -212,7 +212,7 @@ class HyenaInferenceEngine:
         res_state = torch.sum(residues * iir_state, dim=-1).real
 
         if iir_groups > 1:
-            res_state = res_state.repeat_interleave(self.hidden_size // self.hyena_filter_groups)
+            raise NotImplementedError
         y = x2 * res_state + D * x1v
 
         return y, iir_state
@@ -272,8 +272,8 @@ class HyenaInferenceEngine:
             poles = poles.squeeze().reshape(poles.shape[0], -1)[..., None]
 
             state_s = poles ** t
-            if self.hyena_filter_groups > 1:
-                state_s = state_s.repeat_interleave(hidden_size // hyena_filter_groups, 1)
+            if hyena_filter_groups > 1:
+                raise NotImplementedError   
 
             x1v = x1v[:, :, None].repeat(1, 1, 2 * state_size, 1)
             x1v = x1v.reshape(x1v.shape[0], -1, x1v.shape[-1])
@@ -303,7 +303,7 @@ class HyenaInferenceEngine:
             inference_params.state_dict[layer_idx] = state[..., L - 1].to(dtype=state_dtype)
 
 
-    def _compute_state(self, log_poles, u, L, *args, **kwargs):
+    def _compute_state(self, log_poles, u, t, L, *args, **kwargs):
         """
         Compute the IIR state given an input `u` and log_poles of the modal system.
         """
@@ -311,7 +311,7 @@ class HyenaInferenceEngine:
         fft_size = 2 * L
         U = torch.fft.rfft(u.to(torch.float32), n=fft_size)
         fft_size = 2 * L
-        x = (log_poles * self.t).exp()
+        x = (log_poles * t).exp()
         # [batch, hidden_size, state_dim, 2 * seqlen]
         X = torch.fft.fft(x, n=fft_size).repeat(bs, 1, 1, 1)  
         state = torch.fft.ifft(U[..., None, :] * X, n=fft_size)[..., :L]

@@ -1,4 +1,6 @@
-# Copyright (c) 2023, Michael Poli.
+# Copyright (c) Together
+# This software is distributed under the terms of the Apache License, Version 2.0
+# Author: Michael Poli
 
 import torch
 from torch import Tensor
