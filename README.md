@@ -16,7 +16,7 @@ Once the environment is set up, you will be able to generate text with:
 ```
 python generate.py --config_path ./configs/7b-sh-32k-base.yml \
 --checkpoint_path <path_to_ckpt> --cached_generation \
---prompt_file <prompt_txt_file>
+--prompt_file ./test_promp.txt
 ```
 
 If you are generating with `prompt.txt`, set `prefill_style: fft` in the config. For very long prompts, you may want to opt for `prefill_style: recurrence`, which will be slower but use less memory.
