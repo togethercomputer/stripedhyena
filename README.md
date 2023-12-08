@@ -18,6 +18,8 @@ StripedHyena is the **first alternative model competitive with the best open-sou
 - Play with the model on our playground!
 - Dive into the details of our [standalone implementation](https://github.com/togethercomputer/stripedhyena), and our related research: [1](https://arxiv.org/abs/2302.10866), [2](https://arxiv.org/abs/2310.18780), [3](https://arxiv.org/abs/2311.05908).
 
+SH-N 7B uses this prompt format: `### Instruction:\n{prompt}\n\n### Response:\n{response}`
+
 ### Model Architecture
 
 StripedHyena is a hybrid architecture composed of multi-head, grouped-query attention and gated convolutions arranged in [Hyena](https://arxiv.org/abs/2302.10866) blocks, different from traditional decoder-only Transformers.  
@@ -80,7 +82,6 @@ Choose your model id, then run the following command:
 ```
 python generate_transformers.py --model_id <model_id> --input-file ./test_prompt.txt
 ```
-
 
 ## Testing Correctness
 
