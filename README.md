@@ -15,7 +15,7 @@ StripedHyena is the **first alternative model competitive with the best open-sou
 **StripedHyena-Nous-7B (SH-N 7B)** is our **chat model** for this release, and was developed with our collaborators at [Nous Research](https://nousresearch.com/).
 
 - Read more here in [our blog](https://www.together.ai/blog/stripedhyena-7b).
-- Play with the model on our playground!
+- Play with the model on our [playground](https://api.together.xyz/playground/language/togethercomputer/StripedHyena-Hessian-7B). [Chat here](https://api.together.xyz/playground/chat/togethercomputer/StripedHyena-Nous-7B)!
 - Dive into the details of our [standalone implementation](https://github.com/togethercomputer/stripedhyena), and our related research: [1](https://arxiv.org/abs/2302.10866), [2](https://arxiv.org/abs/2310.18780), [3](https://arxiv.org/abs/2311.05908).
 
 SH-N 7B uses this prompt format: `### Instruction:\n{prompt}\n\n### Response:\n{response}`
@@ -40,7 +40,7 @@ Playground:
 
 #### Checkpoints
 
-We provide a checkpoint for StripedHyena-Hessian 7B, our base model, here: 
+We provide a checkpoint for StripedHyena-Hessian 7B, our base model. Download `pytorch-model.bin` from the [HuggingFace repository](https://huggingface.co/togethercomputer/StripedHyena-Hessian-7B). As an alternative, we also provide HuggingFace compatible checkpoints for AutoClasses.
 
 #### Environment Setup
 
