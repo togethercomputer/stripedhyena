@@ -2,9 +2,15 @@
 
 Minimal implementation of a StripedHyena model. 
 
+<p align="center">
+  <img src="https://github.com/togethercomputer/stripedhyena/assets/34561392/ce11c785-c8c5-43b2-a34a-41ee9cba3958" width="60%" />
+</p>
+
 ## About
 
-One of the focus areas at Together Research is new architectures for long context, improved training, and inference performance over the Transformer architecture. Spinning out of a research program from our team and academic collaborators, with roots in **signal processing-inspired sequence models**, we are excited to introduce the **StripedHyena** models. StripedHyena is the **first alternative model competitive with the best open-source Transformers** of similar sizes in short and long-context evaluations.
+One of the focus areas at Together Research is new architectures for long context, improved training, and inference performance over the Transformer architecture. Spinning out of a research program from our team and academic collaborators, with roots in **signal processing-inspired sequence models**, we are excited to introduce the **StripedHyena** models. 
+
+StripedHyena is the **first alternative model competitive with the best open-source Transformers** of similar sizes in short and long-context evaluations.
 
 **StripedHyena-Nous-7B (SH-N 7B)** is our **chat model** for this release, and was developed with our collaborators at [Nous Research](https://nousresearch.com/).
 
