@@ -213,7 +213,7 @@ class HyenaInferenceEngine:
 
         if iir_groups > 1:
             raise NotImplementedError
-        y = x2 * res_state + D * x1v
+        y = x2 * (res_state + D * x1v)
 
         return y, iir_state
 

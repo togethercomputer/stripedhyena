@@ -27,7 +27,6 @@ def main(args):
             trust_remote_code=True,
         )
         .to(device)
-        .to(torch.bfloat16)
     )
     print(args)
 
@@ -60,7 +59,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-name", type=str, required=True)
-    parser.add_argument("--max-new-tokens", type=int, default=128)
+    parser.add_argument("--max-new-tokens", type=int, default=64)
     parser.add_argument("--input-file", type=str)
     parser.add_argument("--temperature", type=float)
     parser.add_argument("--repetition-penalty", type=float)
