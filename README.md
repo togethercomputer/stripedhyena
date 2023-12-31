@@ -80,7 +80,7 @@ We also provide an entry script to generate with StripedHyena models hosted on H
 
 Choose your model id, then run the following command:
 ```
-python generate_transformers.py --model_id <model_id> --input-file ./test_prompt.txt
+python generate_transformers.py --model-name <model_id> --input-file ./test_prompt.txt
 ```
 
 ## Testing Correctness
