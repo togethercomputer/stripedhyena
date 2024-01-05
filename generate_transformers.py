@@ -3,8 +3,7 @@ import os
 import sys
 
 import torch
-from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
-                          TextStreamer)
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, TextStreamer
 
 
 def main(args):
