@@ -52,12 +52,14 @@ def sample(logits, top_k=1, top_p=0.0, temperature=1.0):
 
             return indices[
                 torch.arange(indices.shape[0], device=indices.device),
-                torch.multinomial(torch.softmax(logits_top, dim=-1), num_samples=1).squeeze(dim=-1),
+                torch.multinomial(
+                    torch.softmax(logits_top, dim=-1), num_samples=1
+                ).squeeze(dim=-1),
             ]
         else:
             # Clone so that when we modify for top_p we don't change the original logits
             logits_top = logits / temperature if temperature != 1.0 else logits.clone()
             modify_logits_for_top_p_filtering(logits_top, top_p)
-            return torch.multinomial(torch.softmax(logits_top, dim=-1), num_samples=1).squeeze(
-                dim=-1
-            )
+            return torch.multinomial(
+                torch.softmax(logits_top, dim=-1), num_samples=1
+            ).squeeze(dim=-1)

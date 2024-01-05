@@ -1,9 +1,10 @@
 import argparse
-import torch
-import sys
 import os
+import sys
 
-from transformers import AutoModelForCausalLM, AutoTokenizer, TextStreamer, AutoConfig
+import torch
+from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
+                          TextStreamer)
 
 
 def main(args):
@@ -15,19 +16,14 @@ def main(args):
     )
     tokenizer.pad_token = tokenizer.eos_token
 
-    config = AutoConfig.from_pretrained(
-        model_name, trust_remote_code=True
-    )
+    config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
     config.use_cache = True
     device = torch.device("cuda")
-    model = (
-        AutoModelForCausalLM.from_pretrained(
-            model_name,
-            config=config,
-            trust_remote_code=True,
-        )
-        .to(device)
-    )
+    model = AutoModelForCausalLM.from_pretrained(
+        model_name,
+        config=config,
+        trust_remote_code=True,
+    ).to(device)
     print(args)
 
     while True:

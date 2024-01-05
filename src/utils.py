@@ -1,5 +1,6 @@
 import torch
 
+
 def column_split(x, num_heads, head_size):
     """Split a tensor with `num_heads` alongside the head dimension, instead of
     across heads. Fixed to three projections
@@ -59,7 +60,9 @@ class dotdict(dict):
 
 def ensure_divisibility(numerator, denominator):
     """Ensure that numerator is divisible by the denominator."""
-    assert numerator % denominator == 0, "{} is not divisible by {}".format(numerator, denominator)
+    assert numerator % denominator == 0, "{} is not divisible by {}".format(
+        numerator, denominator
+    )
 
 
 def divide(numerator, denominator):
@@ -75,7 +78,9 @@ class VocabUtility:
     partition: Note that indices in [first, last]"""
 
     @staticmethod
-    def vocab_range_from_per_partition_vocab_size(per_partition_vocab_size, rank, world_size):
+    def vocab_range_from_per_partition_vocab_size(
+        per_partition_vocab_size, rank, world_size
+    ):
         index_f = rank * per_partition_vocab_size
         index_l = index_f + per_partition_vocab_size
         return index_f, index_l

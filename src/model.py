@@ -7,19 +7,15 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from src.utils import print_rank_0
 from src.cache import InferenceParams, RecurrentInferenceParams
 from src.engine import HyenaInferenceEngine
-from src.layers import (
-    RMSNorm,
-    ParallelGatedMLP,
-    VocabParallelEmbedding,
-)
-from src.utils import column_split
+from src.layers import ParallelGatedMLP, RMSNorm, VocabParallelEmbedding
+from src.utils import column_split, print_rank_0
 
 try:
     from flash_attn.modules.mha import MHA
-except ImportError: "flash_attn not installed"
+except ImportError:
+    "flash_attn not installed"
 
 
 class AttentionBlock(nn.Module):
@@ -32,7 +28,9 @@ class AttentionBlock(nn.Module):
         dtype = config.get("attn_block_dtype", torch.bfloat16)
         mlp_dtype = config.get("mlp_dtype", torch.bfloat16)
         self.num_attention_heads = config.num_attention_heads
-        self.hidden_size_per_attention_head = config.hidden_size // config.num_attention_heads
+        self.hidden_size_per_attention_head = (
+            config.hidden_size // config.num_attention_heads
+        )
 
         self.counter = 0
         self.inner_mha_cls = MHA(
@@ -81,7 +79,9 @@ class ParallelHyenaFilter(nn.Module):
         super().__init__()
         self.config = config
         self.layer_idx = layer_idx
-        self.hyena_filter_groups = config.get("hyena_filter_groups", self.config.hidden_size)
+        self.hyena_filter_groups = config.get(
+            "hyena_filter_groups", self.config.hidden_size
+        )
 
         self.use_flashfft = config.get("use_flashfft", False)
         self.state_size = config.state_size
@@ -91,14 +91,19 @@ class ParallelHyenaFilter(nn.Module):
         self.counter = 0
         self.column_split_hyena = config.get("column_split_hyena", True)
 
-        assert self.hidden_size % self.num_filters == 0 and self.num_filters <= self.hidden_size
+        assert (
+            self.hidden_size % self.num_filters == 0
+            and self.num_filters <= self.hidden_size
+        )
 
         self.D = nn.Parameter(torch.zeros(self.hidden_size))
 
         # attention heads are not used except to split post short_filter
         # projections in the same way as the checkpoint
         self.num_attention_heads = config.num_attention_heads
-        self.hidden_size_per_attention_head = self.hidden_size // self.num_attention_heads
+        self.hidden_size_per_attention_head = (
+            self.hidden_size // self.num_attention_heads
+        )
 
         # after preprocessing here we can save the new checkpoint
         self.short_filter_length = config.short_filter_length
@@ -106,7 +111,9 @@ class ParallelHyenaFilter(nn.Module):
             torch.randn(3 * config.hidden_size, 1, config.short_filter_length)
         )
         self.short_filter_bias = (
-            nn.Parameter(torch.randn(3 * config.hidden_size)) if config.short_filter_bias else None
+            nn.Parameter(torch.randn(3 * config.hidden_size))
+            if config.short_filter_bias
+            else None
         )
 
         self.engine = HyenaInferenceEngine(layer_idx=layer_idx)
@@ -135,7 +142,9 @@ class ParallelHyenaFilter(nn.Module):
 
         self.num_systems = self.hidden_size // self.hyena_filter_groups
         self.poles = nn.Parameter(torch.randn(self.num_systems, self.state_size, 1, 2))
-        self.residues = nn.Parameter(torch.randn(self.num_systems, self.state_size, 1, 2))
+        self.residues = nn.Parameter(
+            torch.randn(self.num_systems, self.state_size, 1, 2)
+        )
         self.h = None
 
     def forward(self, u, inference_params=None, padding_mask=None, *args, **kwargs):
@@ -147,9 +156,8 @@ class ParallelHyenaFilter(nn.Module):
 
         else:
             return self.parallel_forward(u, inference_params, padding_mask)
-        
-    def parallel_forward(self, u, inference_params=None, padding_mask=None):
 
+    def parallel_forward(self, u, inference_params=None, padding_mask=None):
         L = u.shape[1]
         z_pre, fir_state = self.engine.parallel_fir(
             self.fir_fn,
@@ -174,8 +182,14 @@ class ParallelHyenaFilter(nn.Module):
             h = h.repeat_interleave(self.hidden_size // self.hyena_filter_groups, 1)
 
         # if inference_params is not None, we plan to perform generation:
-        # prefilling for the IIR portion of the filter is handled by the engine. 
-        dims = (self.hidden_size, self.num_attention_heads, self.hidden_size_per_attention_head, self.state_size, self.hyena_filter_groups)
+        # prefilling for the IIR portion of the filter is handled by the engine.
+        dims = (
+            self.hidden_size,
+            self.num_attention_heads,
+            self.hidden_size_per_attention_head,
+            self.state_size,
+            self.hyena_filter_groups,
+        )
         y = self.engine.parallel_iir(
             z_pre,
             h,
@@ -193,7 +207,7 @@ class ParallelHyenaFilter(nn.Module):
             long_fir_threshold=self.long_fir_threshold,
             padding_mask=padding_mask,
         )
-       
+
         return y, inference_params
 
     def sequential_forward(self, u, inference_params):
@@ -211,9 +225,13 @@ class ParallelHyenaFilter(nn.Module):
             u, fir_state, weight=self.short_filter_weight, bias=self.short_filter_bias
         )
         x2, x1, v = (
-            column_split(z_pre, self.num_attention_heads, self.hidden_size_per_attention_head)
+            column_split(
+                z_pre, self.num_attention_heads, self.hidden_size_per_attention_head
+            )
             if self.column_split_hyena
-            else z_pre.split([self.hidden_size, self.hidden_size, self.hidden_size], dim=1)
+            else z_pre.split(
+                [self.hidden_size, self.hidden_size, self.hidden_size], dim=1
+            )
         )
 
         y, iir_state = self.engine.step_iir(
@@ -252,7 +270,7 @@ class ParallelHyenaFilter(nn.Module):
             torch.view_as_complex(self.residues.to(filter_dtype)),
             torch.view_as_complex(self.poles.to(filter_dtype)).log(),
         )
-        h = (residues * (log_poles * self.t).exp()).real.sum(1)[None]  
+        h = (residues * (log_poles * self.t).exp()).real.sum(1)[None]
         return h, filter_dtype, log_poles, residues
 
 
@@ -263,12 +281,14 @@ class ParallelGatedConvBlock(nn.Module):
         self.layer_idx = layer_idx
         dtype = config.get("hyena_block_dtype", torch.float32)
         mlp_dtype = config.get("mlp_dtype", torch.bfloat16)
-        self.pre_norm, self.post_norm = RMSNorm(config).to(dtype=dtype), RMSNorm(config).to(
-            dtype=dtype
-        )
+        self.pre_norm, self.post_norm = RMSNorm(config).to(dtype=dtype), RMSNorm(
+            config
+        ).to(dtype=dtype)
         self.filter = ParallelHyenaFilter(config, layer_idx).to(dtype=dtype)
         self.projections = nn.Linear(config.hidden_size, 3 * config.hidden_size)
-        self.out_filter_dense = nn.Linear(config.hidden_size, config.hidden_size).to(dtype)
+        self.out_filter_dense = nn.Linear(config.hidden_size, config.hidden_size).to(
+            dtype
+        )
         self.mlp = ParallelGatedMLP(config).to(dtype=mlp_dtype)
 
     def forward(self, u, inference_params=None, padding_mask=None, *args, **kwargs):
@@ -305,7 +325,9 @@ class StripedHyena(nn.Module):
         self.config = config
         self.embedding_layer = VocabParallelEmbedding(config)
         self.norm = RMSNorm(config) if config.get("final_norm", True) else None
-        self.unembed = self.emb if config.tie_embeddings else VocabParallelEmbedding(config)
+        self.unembed = (
+            self.emb if config.tie_embeddings else VocabParallelEmbedding(config)
+        )
         self.scratchpad = None
 
         if config.get("use_flashfft", "False"):
@@ -329,7 +351,9 @@ class StripedHyena(nn.Module):
                 inference_params_dict=inference_params_dict,
             )
         else:
-            x, inference_params_dict_out = self.stateless_forward(x, padding_mask=padding_mask)
+            x, inference_params_dict_out = self.stateless_forward(
+                x, padding_mask=padding_mask
+            )
         x = self.norm(x)
         x = self.unembed.unembed(x)
         return x, inference_params_dict_out
@@ -381,7 +405,9 @@ class StripedHyena(nn.Module):
                         torch.view_as_complex(block.filter.poles.to(torch.float16)),
                     )
 
-                    block.filter.h = (residues * poles**block.filter.t).real.sum(1)[None]
+                    block.filter.h = (residues * poles**block.filter.t).real.sum(1)[
+                        None
+                    ]
                     block.filter.h = block.filter.h.to(dtype=filter_dtype)
 
     def load_poles_residues(self, path):
@@ -392,7 +418,7 @@ class StripedHyena(nn.Module):
                     print(f"Loading poles and residues for block {block_idx}")
                     poles = torch.load(
                         path + f"/approx_poles_{block_idx+1}.pt", map_location="cpu"
-                    ) 
+                    )
                     poles = torch.view_as_real(poles)
                     residues = torch.load(
                         path + f"/approx_residues_{block_idx+1}.pt", map_location="cpu"
@@ -406,7 +432,7 @@ class StripedHyena(nn.Module):
 
     def to_bfloat16_except_poles_residues(self):
         """Convert all parameters to bfloat16 except for the poles and residues.
-        
+
         Particularly important for longer prompts.
         """
         for k, p in self.named_parameters():

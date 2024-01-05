@@ -5,8 +5,9 @@
 # Barebones generation class for standalone inference.
 
 import torch
-from src.utils import print_rank_0
+
 from src.sample import sample
+from src.utils import print_rank_0
 
 
 class Generator:
@@ -84,7 +85,7 @@ class Generator:
             post_prefill = cached_generation and i > 0
             # prefill then process only the last token
             if post_prefill:
-                x = x[:,-1:]
+                x = x[:, -1:]
                 seqlen_offset = inference_params_dict_out["mha"].seqlen_offset
 
                 if seqlen_offset == 0:
@@ -100,7 +101,7 @@ class Generator:
                 inference_params_dict=inference_params_dict_out,
             )
 
-            last_logits = logits[:,-1]
+            last_logits = logits[:, -1]
 
             new_idx = sample(
                 last_logits,

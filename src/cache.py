@@ -2,9 +2,10 @@
 # This software is distributed under the terms of the Apache License, Version 2.0
 # Author: Michael Poli
 
-from torch import Tensor
 from dataclasses import dataclass, field
 from typing import Optional
+
+from torch import Tensor
 
 
 # https://github.com/Dao-AILab/flash-attention/blob/main/flash_attn/utils/generation.py

@@ -1,9 +1,10 @@
 # based on https://github.com/EleutherAI/gpt-neox/blob/main/megatron/tokenizer/tokenizer.py
-import torch
-from tokenizers import Tokenizer
 import json
-import tqdm
 import pathlib
+
+import torch
+import tqdm
+from tokenizers import Tokenizer
 
 
 class HFAutoTokenizer:
@@ -53,7 +54,8 @@ class HFAutoTokenizer:
         for token_ids in token_ids_batch:
             out.append(
                 self.detokenize(
-                    [t.item() for t in token_ids], skip_special_tokens=skip_special_tokens
+                    [t.item() for t in token_ids],
+                    skip_special_tokens=skip_special_tokens,
                 )
             )
         return out

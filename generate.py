@@ -2,27 +2,32 @@
 # This software is distributed under the terms of the Apache License, Version 2.0
 # Author: Michael Poli
 
-import yaml
-import os
 import argparse
+import os
 
 import torch
+import yaml
 
-from src.utils import dotdict
+from src.generation import Generator
+from src.model import StripedHyena
 from src.sample import sample
 from src.tokenizer import HFAutoTokenizer
-from src.generation import Generator
-from src.utils import print_rank_0
-
-from src.model import StripedHyena
-
+from src.utils import dotdict, print_rank_0
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run StripedHyena Model")
-    parser.add_argument("--config_path", required=True, help="Path to configuration file")
-    parser.add_argument("--checkpoint_path", default=None, help="Path to checkpoint file")
-    parser.add_argument("--num_tokens", default=84, help="Number of tokens to generate.")
-    parser.add_argument("--prompt_file", default="./prompt.txt", help="Path to prompt file.")
+    parser.add_argument(
+        "--config_path", required=True, help="Path to configuration file"
+    )
+    parser.add_argument(
+        "--checkpoint_path", default=None, help="Path to checkpoint file"
+    )
+    parser.add_argument(
+        "--num_tokens", default=84, help="Number of tokens to generate."
+    )
+    parser.add_argument(
+        "--prompt_file", default="./prompt.txt", help="Path to prompt file."
+    )
     parser.add_argument(
         "--cached_generation",
         action="store_true",
@@ -42,7 +47,9 @@ if __name__ == "__main__":
     print_rank_0("Loading state dict...", end="\n\n")
 
     if args.checkpoint_path:
-        m.load_state_dict(torch.load(args.checkpoint_path, map_location=device), strict=False)
+        m.load_state_dict(
+            torch.load(args.checkpoint_path, map_location=device), strict=False
+        )
 
     m = m.to(device)
     m.to_bfloat16_except_poles_residues()
