@@ -16,18 +16,10 @@ from src.utils import dotdict, print_rank_0
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run StripedHyena Model")
-    parser.add_argument(
-        "--config_path", required=True, help="Path to configuration file"
-    )
-    parser.add_argument(
-        "--checkpoint_path", default=None, help="Path to checkpoint file"
-    )
-    parser.add_argument(
-        "--num_tokens", default=84, help="Number of tokens to generate."
-    )
-    parser.add_argument(
-        "--prompt_file", default="./prompt.txt", help="Path to prompt file."
-    )
+    parser.add_argument("--config_path", required=True, help="Path to configuration file")
+    parser.add_argument("--checkpoint_path", default=None, help="Path to checkpoint file")
+    parser.add_argument("--num_tokens", default=84, help="Number of tokens to generate.")
+    parser.add_argument("--prompt_file", default="./prompt.txt", help="Path to prompt file.")
     parser.add_argument(
         "--cached_generation",
         action="store_true",
@@ -47,9 +39,7 @@ if __name__ == "__main__":
     print_rank_0("Loading state dict...", end="\n\n")
 
     if args.checkpoint_path:
-        m.load_state_dict(
-            torch.load(args.checkpoint_path, map_location=device), strict=False
-        )
+        m.load_state_dict(torch.load(args.checkpoint_path, map_location=device), strict=False)
 
     m = m.to(device)
     m.to_bfloat16_except_poles_residues()

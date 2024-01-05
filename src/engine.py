@@ -46,9 +46,7 @@ class HyenaInferenceEngine:
     ) -> None:
         self.fir_fn = fir_fn
         self.fftconv_fn = fftconv_fn
-        assert (
-            iir_prefill_style in IIR_PREFILL_MODES
-        ), f"iir_prefill_style must be one of {IIR_PREFILL_MODES}"
+        assert iir_prefill_style in IIR_PREFILL_MODES, f"iir_prefill_style must be one of {IIR_PREFILL_MODES}"
         self.iir_prefill_style = iir_prefill_style
         self.layer_idx = layer_idx
         self.low_mem_mode = False
@@ -242,9 +240,7 @@ class HyenaInferenceEngine:
         """Turns the IIR filter into a FIR and uses a cache for decoding."""
         raise NotImplementedError(":)")
 
-    def prefill_via_direct_recurrence(
-        self, inference_params, x1v, L, poles, *args, **kwargs
-    ):
+    def prefill_via_direct_recurrence(self, inference_params, x1v, L, poles, *args, **kwargs):
         """
         Compute the IIR state via explicit SSM recurrence (modal form)
         """
@@ -256,13 +252,9 @@ class HyenaInferenceEngine:
 
         for i in range(L):
             state = poles * state + x1v_[:, :, i]
-        inference_params.state_dict[self.layer_idx] = torch.view_as_complex(
-            state.to(dtype=torch.float32)
-        )
+        inference_params.state_dict[self.layer_idx] = torch.view_as_complex(state.to(dtype=torch.float32))
 
-    def prefill_via_hybrid_recurrence(
-        self, inference_params, u, log_poles, x1v_f_a, L, *args, **kwargs
-    ):
+    def prefill_via_hybrid_recurrence(self, inference_params, u, log_poles, x1v_f_a, L, *args, **kwargs):
         """
         Compute the IIR state via hybrid recurrence-convolution over blocks
         """
@@ -329,17 +321,11 @@ class HyenaInferenceEngine:
             fft_size = 2 * L
             poles = torch.view_as_complex(poles.to(torch.float32))
             state_s = poles**t
-            state_S = torch.fft.fft(state_s, n=fft_size).repeat(
-                bs, 1, 1, 1
-            )  # B, D, state_dim, 2 * L
+            state_S = torch.fft.fft(state_s, n=fft_size).repeat(bs, 1, 1, 1)  # B, D, state_dim, 2 * L
             if hyena_filter_groups > 1:
-                state_S = state_S.repeat_interleave(
-                    hidden_size // hyena_filter_groups, 1
-                )
+                state_S = state_S.repeat_interleave(hidden_size // hyena_filter_groups, 1)
             state = torch.fft.ifft(X_s[..., None, :] * state_S, n=fft_size)
-            inference_params.state_dict[layer_idx] = state[..., L - 1].to(
-                dtype=state_dtype
-            )
+            inference_params.state_dict[layer_idx] = state[..., L - 1].to(dtype=state_dtype)
 
     def _compute_state(self, log_poles, u, t, L, *args, **kwargs):
         """
