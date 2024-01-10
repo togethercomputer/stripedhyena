@@ -292,7 +292,6 @@ class HyenaInferenceEngine:
             state = poles * state + x1v_[:, :, i]
             output[:, :, i] = torch.sum(residues * state, dim=-2)[..., 0]  # .real
 
-        list_tensors(self.layer_idx)
         inference_params.state_dict[self.layer_idx] = torch.view_as_complex(state)
 
         return output
