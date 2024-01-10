@@ -1,6 +1,7 @@
 # Copyright (c) Together
 # This software is distributed under the terms of the Apache License, Version 2.0
 # Author: Michael Poli
+import gc
 
 import torch
 import torch.nn as nn
@@ -11,6 +12,15 @@ try:
 except:
     pass
 from src.utils import column_split
+
+IIR_PREFILL_MODES = [
+    "recurrence",
+    "modal-fft",
+    "hybrid-modal-recurrence",
+    "modal-scan",
+    "canonical-fft",
+    "iir-fir-caching",
+]
 
 
 def canonicalize_modal_system(poles, residues):
@@ -26,14 +36,17 @@ def canonicalize_modal_system(poles, residues):
     raise NotImplementedError
 
 
-IIR_PREFILL_MODES = [
-    "recurrence",
-    "modal-fft",
-    "hybrid-modal-recurrence",
-    "modal-scan",
-    "canonical-fft",
-    "iir-fir-caching",
-]
+def list_tensors(idx):
+    for obj in gc.get_objects():
+        try:
+            if torch.is_tensor(obj) and isinstance(obj, torch.Tensor):
+                # dump to log
+                print(type(obj), obj.size())
+                el = obj[0]
+                with open(f"tensors_{idx}.txt", "a") as f:
+                    f.write(f"{type(obj)} {obj.size()} {el}\n")
+        except Exception as e:
+            pass
 
 
 class HyenaInferenceEngine:
@@ -101,6 +114,7 @@ class HyenaInferenceEngine:
         D,
         L,
         poles,
+        residues,
         t,
         dims,
         layer_idx,
@@ -142,34 +156,46 @@ class HyenaInferenceEngine:
 
         x1v = x1 * v
 
-        if use_flashfft and (L % 2) == 0:  # only works with even L
-            y = fftconv_fn(
-                x1v.to(dtype=torch.bfloat16).contiguous(),
-                h.to(dtype=torch.float32),
+        if inference_params is not None and prefill_style == "recurrence":
+            y = self.prefill_via_direct_recurrence(
+                inference_params=inference_params,
+                x1v=x1v,
+                L=L,
+                poles=poles,
+                residues=residues,
             )
-            X_s = None
 
-        elif long_fir_threshold is None:
-            H = torch.fft.rfft(h.to(dtype=torch.float32), n=fft_size) / fft_size
-            X_s = torch.fft.fft(x1v.to(dtype=torch.float32), n=fft_size)
-            X = X_s[..., : H.shape[-1]]
-            if len(z_pre.shape) > 3:
-                H = H.unsqueeze(1)
-            y = torch.fft.irfft(X * H, n=fft_size, norm="forward")[..., :L]
         else:
-            assert h.shape[0] == 1, "batch size must be 1 for long_fir_threshold"
-            h = h[0][:, None]  # rearrange to d, 1, l for depthwise conv1d
-            h = h[..., :long_fir_threshold]
-            y = F.conv1d(
-                x1v,
-                h.to(dtype=x1v.dtype),
-                stride=1,
-                groups=x1v.shape[1],
-                padding=h.shape[-1] - 1,
-            )[..., :L]
+            if use_flashfft and (L % 2) == 0:  # only works with even L
+                y = fftconv_fn(
+                    x1v.to(dtype=torch.bfloat16).contiguous(),
+                    h.to(dtype=torch.float32),
+                )
+                X_s = None
+
+            elif long_fir_threshold is None:
+                H = torch.fft.rfft(h.to(dtype=torch.float32), n=fft_size) / fft_size
+                X_s = torch.fft.fft(x1v.to(dtype=torch.float32), n=fft_size)
+                X = X_s[..., : H.shape[-1]]
+                if len(z_pre.shape) > 3:
+                    H = H.unsqueeze(1)
+                y = torch.fft.irfft(X * H, n=fft_size, norm="forward")[..., :L]
+
+            else:
+                assert h.shape[0] == 1, "batch size must be 1 for long_fir_threshold"
+                h = h[0][:, None]  # rearrange to d, 1, l for depthwise conv1d
+                h = h[..., :long_fir_threshold]
+                y = F.conv1d(
+                    x1v,
+                    h.to(dtype=x1v.dtype),
+                    stride=1,
+                    groups=x1v.shape[1],
+                    padding=h.shape[-1] - 1,
+                )[..., :L]
 
         y = y.to(dtype=x1v.dtype)
         y = (y + x1v * D.unsqueeze(-1)) * x2
+
         if inference_params is not None:
             if prefill_style == "fft":
                 self.prefill_via_modal_fft(
@@ -185,17 +211,13 @@ class HyenaInferenceEngine:
                 )
 
             elif prefill_style == "recurrence":
-                self.prefill_via_direct_recurrence(
-                    inference_params=inference_params,
-                    x1v=x1v,
-                    L=L,
-                    poles=poles,
-                )
-
+                # recurrent prefill is done before
+                pass
             else:
                 raise NotImplementedError
             if self.low_mem_mode:
-                del z_pre, x2, x1, v, x1v, h
+                # TODO: smarter gc
+                del z_pre, x2, x1, v, x1v, h, poles, residues
                 torch.cuda.empty_cache()
 
         return y.permute(0, 2, 1)
@@ -240,19 +262,40 @@ class HyenaInferenceEngine:
         """Turns the IIR filter into a FIR and uses a cache for decoding."""
         raise NotImplementedError(":)")
 
-    def prefill_via_direct_recurrence(self, inference_params, x1v, L, poles, *args, **kwargs):
+    def prefill_via_direct_recurrence(
+        self, inference_params, x1v, L, residues, poles, *args, **kwargs
+    ) -> torch.Tensor:
         """
         Compute the IIR state via explicit SSM recurrence (modal form)
+
+        This is the most memory efficient prefilling method for Hyena filters.
+
+        Note:
+            dtypes: [state: float32, poles: float32, x1v: bfloat16, output: bfloat16]
         """
+        state_dim = poles.shape[1]
         x1v_ = x1v[..., None, None]  # b, d, l, sdim, reim
-        x1v_ = x1v_.repeat(1, 1, 1, 1, 2)  # b, d, l, sdim, reim
+        x1v_ = x1v_.repeat(1, 1, 1, state_dim, 2)  # b, d, l, sdim, reim
+        x1v_[..., 1] = 0
 
-        state = x1v_[:, :, 0]
-        poles = poles[:, :, 0].to(dtype=torch.float32)
+        state = 0 * x1v_[:, :, 0]
+        output = 0 * x1v_[:, :, :, 0, 0]  # b, d, l
 
+        # suppress dummy seqlen dimension
+        poles = poles[:, :, 0][None]
+        residues = residues[:, :, 0][None].repeat(x1v_.shape[0], 1, 1, 1)  # b, d, sdim, reim
+
+        # state: b, d, sdim, reim
+        # poles: 1, d, sdim, reim
+        # x1v_: b, d, l, sdim, reim
         for i in range(L):
             state = poles * state + x1v_[:, :, i]
-        inference_params.state_dict[self.layer_idx] = torch.view_as_complex(state.to(dtype=torch.float32))
+            output[:, :, i] = torch.sum(residues * state, dim=-2)[..., 0]  # .real
+
+        list_tensors(self.layer_idx)
+        inference_params.state_dict[self.layer_idx] = torch.view_as_complex(state)
+
+        return output
 
     def prefill_via_hybrid_recurrence(self, inference_params, u, log_poles, x1v_f_a, L, *args, **kwargs):
         """

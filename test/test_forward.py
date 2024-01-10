@@ -10,7 +10,6 @@ from src.model import StripedHyena
 from src.utils import dotdict
 
 
-@pytest.mark.skip(reason="Not implemented")
 def test_batched_forward(pytestconfig):
     torch.set_printoptions(precision=16, sci_mode=True)
     torch.backends.cudnn.deterministic = True

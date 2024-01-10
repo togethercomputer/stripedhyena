@@ -124,7 +124,15 @@ class ParallelHyenaFilter(nn.Module):
             assert self.use_flashfft is False, "long_fir_threshold not compatible with fused flashfft"
 
         self.num_systems = self.hidden_size // self.hyena_filter_groups
-        self.poles = nn.Parameter(torch.randn(self.num_systems, self.state_size, 1, 2))
+
+        poles = torch.randn(self.num_systems, self.state_size, 1, 2)
+
+        # TODO: bring over init from internals
+        poles[..., 0] = 1e-2 * torch.randn(self.num_systems, self.state_size, 1)
+        poles[..., 1] = 1e-3 * torch.randn(self.num_systems, self.state_size, 1)
+
+        self.poles = nn.Parameter(poles)
+
         self.residues = nn.Parameter(torch.randn(self.num_systems, self.state_size, 1, 2))
         self.h = None
 
@@ -160,7 +168,7 @@ class ParallelHyenaFilter(nn.Module):
             h = h.repeat_interleave(self.hidden_size // self.hyena_filter_groups, 1)
 
         # if inference_params is not None, we plan to perform generation:
-        # prefilling for the IIR portion of the filter is handled by the engine.
+        # prefilling is handled by the engine.
         dims = (
             self.hidden_size,
             self.num_attention_heads,
@@ -175,6 +183,7 @@ class ParallelHyenaFilter(nn.Module):
             L,
             t=self.t,
             poles=self.poles,
+            residues=self.residues,
             dims=dims,
             inference_params=inference_params,
             layer_idx=self.layer_idx,
@@ -253,6 +262,7 @@ class ParallelGatedConvBlock(nn.Module):
         super().__init__()
         self.config = config
         self.layer_idx = layer_idx
+        self.low_mem_mode = config.get("low_mem_mode", False)
         dtype = config.get("hyena_block_dtype", torch.float32)
         mlp_dtype = config.get("mlp_dtype", torch.bfloat16)
         self.pre_norm, self.post_norm = RMSNorm(config).to(dtype=dtype), RMSNorm(config).to(dtype=dtype)
@@ -263,16 +273,21 @@ class ParallelGatedConvBlock(nn.Module):
 
     def forward(self, u, inference_params=None, padding_mask=None, *args, **kwargs):
         z = self.projections(self.pre_norm(u))
+
         if type(padding_mask) == torch.Tensor:  # guard against bias
             z = z * padding_mask[..., None]
 
         z, inference_params = self.filter(z, inference_params=inference_params, padding_mask=padding_mask)
 
-        u = self.out_filter_dense(z) + u
+        z_in = self.out_filter_dense(z) + u
+
         if type(padding_mask) == torch.Tensor:  # guard against bias
-            u = u * padding_mask[..., None]
-        u = self.mlp(self.post_norm(u)) + u
-        return u, inference_params
+            z_in = z_in * padding_mask[..., None]
+
+        y = self.mlp(self.post_norm(z_in)) + z_in
+        torch.cuda.empty_cache()
+
+        return y, inference_params
 
 
 def get_block(config, layer_idx, flash_fft=None):
@@ -294,7 +309,6 @@ class StripedHyena(nn.Module):
         self.embedding_layer = VocabParallelEmbedding(config)
         self.norm = RMSNorm(config) if config.get("final_norm", True) else None
         self.unembed = self.emb if config.tie_embeddings else VocabParallelEmbedding(config)
-        self.scratchpad = None
 
         if config.get("use_flashfft", "False"):
             from flash_fft.conv import FlashFFTConv
@@ -317,6 +331,7 @@ class StripedHyena(nn.Module):
             )
         else:
             x, inference_params_dict_out = self.stateless_forward(x, padding_mask=padding_mask)
+
         x = self.norm(x)
         x = self.unembed.unembed(x)
         return x, inference_params_dict_out

@@ -35,6 +35,7 @@ class RecurrentInferenceParams:
 
     fir_filter_length: int = 3
     state_dim: int = 16
+    # seqlen_offset not used
     seqlen_offset: int = 0
     fir_state_dict: dict = field(default_factory=dict)
     state_dict: dict = field(default_factory=dict)

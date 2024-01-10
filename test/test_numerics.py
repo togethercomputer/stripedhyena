@@ -17,7 +17,7 @@ def test_aa_fp_error(pytestconfig):
     linear = nn.Linear(input_dim, output_dim).to(device).to(dtype)
 
     x1 = torch.randn(1, input_dim)
-    x4 = x1.repeat(4, 1).to(dtype)
+    x4 = x1.repeat(4, 1).to(dtype).to(device)
 
     y1 = linear(x1)
     y4 = linear(x4)
@@ -25,19 +25,6 @@ def test_aa_fp_error(pytestconfig):
     if pytestconfig.getoption("verbose") > 0:
         print(y1[0])
         print(y4[0])
-
-    assert False
-
-
-def test_batched_mul(pytestconfig):
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    x = torch.randn(1, 8, 64, dtype=torch.bfloat16, device=device)
-    x = x.repeat(4, 1, 1)
-    w = torch.randn(64, 32000, dtype=torch.bfloat16, device=device)
-    y1 = torch.matmul(x[:1], w)
-    y4 = torch.matmul(x, w)
-    print(y1[0, 0, :5])
-    print(y4[0, 0, :5])
 
     assert False
 
