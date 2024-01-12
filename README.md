@@ -109,7 +109,7 @@ If have found the pretrained models or architecture useful for you research or a
 ```
 @software{stripedhyena,
   title        = {{StripedHyena: Moving Beyond Transformers with Hybrid Signal Processing Models}},
-  author       = { Poli, Michael and Wang, Jue and Massaroli, Stefano and Nguyen, Eric and Thomas, Armin},
+  author       = { Poli, Michael and Wang, Jue and Massaroli, Stefano and Quesnelle, Jeffrey and Nguyen, Eric and Thomas, Armin},
   month        = 12,
   year         = 2023,
   url          = { https://github.com/togethercomputer/stripedhyena },
