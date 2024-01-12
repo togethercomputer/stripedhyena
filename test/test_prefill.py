@@ -15,44 +15,59 @@ def test_long_prefill(pytestconfig):
     torch.cuda.manual_seed(1)
     # torch.cuda.memory._record_memory_history()
 
-    seqlen = 100000
+    seqlen = 2000
     config_path = "./configs/7b-sh-32k-v1.yml"
     config = dotdict(yaml.load(open(config_path), Loader=yaml.FullLoader))
     vocab_size = config.vocab_size
     config.max_seqlen = seqlen
     config.prefill_style = "recurrence"
-
+    config.compile = True
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    x = torch.randint(0, vocab_size, (1, seqlen), device=device)
+    x = torch.randint(0, vocab_size, (1, seqlen), device=device, requires_grad=False)
     model = StripedHyena(config)
     model.to_bfloat16_except_poles_residues()
     model = model.to(device)
     model = model.eval()
 
+    # def run_model(x, inference_params_dict_out):
+    #     with torch.inference_mode():
+    #         logits, inference_params_dict_out = model(
+    #             x,
+    #             inference_params_dict=inference_params_dict_out,
+    #         )
+    #     return logits, inference_params_dict_out
+
+    # c_run_model = torch.compile(run_model, fullgraph=False, dynamic=False, mode="reduce-overhead", backend="inductor")
+
+    # with torch.inference_mode():
+    #     c_run_model(x, model.initialize_inference_params())
+    # assert False
+
     inference_params_dict_out = model.initialize_inference_params()
 
-    with torch.inference_mode():
-        logits_rec, inference_params_dict_out = model(
-            x,
-            inference_params_dict=inference_params_dict_out,
-        )
+    logits_rec, inference_params_dict_out = model(
+        x,
+        inference_params_dict=inference_params_dict_out,
+    )
     # torch.cuda.memory._dump_snapshot("my_snapshot.pickle")
     assert False
 
 
-@pytest.mark.skip(reason="")
 def test_recurrent_prefill(pytestconfig):
     torch.manual_seed(1)
     torch.cuda.manual_seed(1)
+    L = 128
 
     config_path = "./configs/sh-stem-test.yml"
     config = dotdict(yaml.load(open(config_path), Loader=yaml.FullLoader))
+    config.use_flashfft = True
+    config.seqlen = L
     vocab_size = config.vocab_size
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    x = torch.randint(0, vocab_size, (1, 1024), device=device)
+    x = torch.randint(0, vocab_size, (1, L), device=device)
 
     model = StripedHyena(config)
     model.to_bfloat16_except_poles_residues()

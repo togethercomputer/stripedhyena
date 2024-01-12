@@ -53,12 +53,10 @@ class HyenaInferenceEngine:
     def __init__(
         self,
         fir_fn=None,
-        fftconv_fn=None,
         iir_prefill_style="modal-fft",
         layer_idx=None,
     ) -> None:
         self.fir_fn = fir_fn
-        self.fftconv_fn = fftconv_fn
         assert iir_prefill_style in IIR_PREFILL_MODES, f"iir_prefill_style must be one of {IIR_PREFILL_MODES}"
         self.iir_prefill_style = iir_prefill_style
         self.layer_idx = layer_idx
@@ -208,6 +206,7 @@ class HyenaInferenceEngine:
                     dims=dims,
                     layer_idx=layer_idx,
                     use_flashfft=use_flashfft,
+                    fftconv_fn=fftconv_fn,
                 )
 
             elif prefill_style == "recurrence":
@@ -292,7 +291,8 @@ class HyenaInferenceEngine:
             state = poles * state + x1v_[:, :, i]
             output[:, :, i] = torch.sum(residues * state, dim=-2)[..., 0]  # .real
 
-        inference_params.state_dict[self.layer_idx] = torch.view_as_complex(state)
+        # some fftconv kernels will keep the state at lower precision, so we cast it back
+        inference_params.state_dict[self.layer_idx] = torch.view_as_complex(state.to(dtype=torch.float32))
 
         return output
 
@@ -326,6 +326,7 @@ class HyenaInferenceEngine:
         layer_idx,
         X_s=None,
         use_flashfft=False,
+        fftconv_fn=None,
         state_dtype=torch.complex64,
         *args,
         **kwargs,
@@ -350,13 +351,13 @@ class HyenaInferenceEngine:
             x1v = x1v.reshape(x1v.shape[0], -1, x1v.shape[-1])
             state_s = state_s[None]
 
-            state = self.fftconv_fn(
+            state = fftconv_fn(
                 x1v.contiguous(),
                 state_s.to(dtype=torch.float32),
             )
             state = state[..., L - 1].reshape(x1v.shape[0], hidden_size, state_size, 2)
-            state = torch.view_as_complex(state.contiguous())
-            inference_params.state_dict[self.layer_idx] = state.to(dtype=state_dtype)
+            state = torch.view_as_complex(state.contiguous().to(dtype=torch.float32))
+            inference_params.state_dict[self.layer_idx] = state
         else:
             assert X_s is not None
             bs = x1v.shape[0]

@@ -271,8 +271,23 @@ class ParallelGatedConvBlock(nn.Module):
         self.out_filter_dense = nn.Linear(config.hidden_size, config.hidden_size).to(dtype)
         self.mlp = ParallelGatedMLP(config).to(dtype=mlp_dtype)
 
+        self.proj_norm_fn = self.proj_norm
+        self.res_mlp_norm_fn = self.res_mlp_norm
+
+        if self.config.get("compile", False):
+            self.proj_norm_fn = torch.compile(self.proj_norm, fullgraph=True, dynamic=False, mode="reduce-overhead")
+            self.res_mlp_norm_fn = torch.compile(
+                self.res_mlp_norm, fullgraph=True, dynamic=False, mode="reduce-overhead"
+            )
+
+    def proj_norm(self, x):
+        return self.projections(self.pre_norm(x))
+
+    def res_mlp_norm(self, x):
+        return self.mlp(self.post_norm(x)) + x
+
     def forward(self, u, inference_params=None, padding_mask=None, *args, **kwargs):
-        z = self.projections(self.pre_norm(u))
+        z = self.proj_norm_fn(u)
 
         if type(padding_mask) == torch.Tensor:  # guard against bias
             z = z * padding_mask[..., None]
@@ -284,8 +299,7 @@ class ParallelGatedConvBlock(nn.Module):
         if type(padding_mask) == torch.Tensor:  # guard against bias
             z_in = z_in * padding_mask[..., None]
 
-        y = self.mlp(self.post_norm(z_in)) + z_in
-        torch.cuda.empty_cache()
+        y = self.res_mlp_norm_fn(z_in)
 
         return y, inference_params
 
@@ -311,9 +325,9 @@ class StripedHyena(nn.Module):
         self.unembed = self.emb if config.tie_embeddings else VocabParallelEmbedding(config)
 
         if config.get("use_flashfft", "False"):
-            from flash_fft.conv import FlashFFTConv
+            from flashfftconv import FlashFFTConv
 
-            self.flash_fft = FlashFFTConv(config.seqlen, dtype=torch.bfloat16)
+            self.flash_fft = FlashFFTConv(2 * config.seqlen, dtype=torch.bfloat16)
         else:
             self.flash_fft = None
 

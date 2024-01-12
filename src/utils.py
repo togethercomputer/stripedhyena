@@ -1,6 +1,13 @@
 import torch
 
 
+def grab_first_if_tuple(x):
+    if x.__class__.__name__ == "tuple":
+        return x[0]
+    else:
+        return x
+
+
 def column_split(x, num_heads, head_size):
     """Split a tensor with `num_heads` alongside the head dimension, instead of
     across heads. Fixed to three projections

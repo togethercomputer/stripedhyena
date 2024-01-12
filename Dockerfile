@@ -9,5 +9,5 @@ RUN rm -rf ./flash-attention/* && \
     cd ../layer_norm && python setup.py install && \ 
     cd ../../ && python setup.py install 
 
-RUN pip install ninja tokenizers==0.14.1 einops transformers==4.34.1 
+RUN pip install ninja tokenizers==0.14.1 einops triton transformers==4.34.1 
 

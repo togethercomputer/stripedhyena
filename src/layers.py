@@ -8,6 +8,8 @@ import torch.nn.functional as F
 from einops import rearrange
 from torch import Tensor
 
+from src.utils import grab_first_if_tuple
+
 
 class RMSNorm(torch.nn.Module):
     def __init__(self, config):
@@ -65,12 +67,9 @@ class ParallelGatedMLP(nn.Module):
 
     def forward(self, z):
         z1, z2 = self.l1(z), self.l2(z)
-        if type(z1) == tuple:
-            z1 = z1[0]
-        if type(z2) == tuple:
-            z2 = z2[0]
+        z1, z2 = grab_first_if_tuple(z1), grab_first_if_tuple(z2)
         y = self.l3(self.act(z1) * z2)
-        return y[0] if type(y) == tuple else y
+        return grab_first_if_tuple(y)
 
 
 class Embedding(nn.Module):
