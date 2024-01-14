@@ -288,10 +288,10 @@ class HyenaInferenceEngine:
         # poles: 1, d, sdim, reim
         # x1v_: b, d, l, sdim, reim
         for i in range(L):
-            state = poles * state + x1v_[:, :, i]
+            state[..., 0] = poles[..., 0] * state[..., 0] - poles[..., 1] * state[..., 1] + x1v_[:, :, i, :, 0]
+            state[..., 1] = poles[..., 0] * state[..., 1] + poles[..., 1] * state[..., 0] + x1v_[:, :, i, :, 1] 
             output[:, :, i] = torch.sum(residues * state, dim=-2)[..., 0]  # .real
-
-        # some fftconv kernels will keep the state at lower precision, so we cast it back
+            
         inference_params.state_dict[self.layer_idx] = torch.view_as_complex(state.to(dtype=torch.float32))
 
         return output
