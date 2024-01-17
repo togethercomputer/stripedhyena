@@ -8,6 +8,7 @@ import torch
 
 from src.sample import sample
 from src.utils import print_rank_0
+from src.tokenizer import CharLevelTokenizer  # need to add a check for this type of tokenizer
 
 
 class Generator:
@@ -32,11 +33,21 @@ class Generator:
         stop_at_eos=True,
         max_seqlen=None,
     ):
-        eos_token_ids = self.tokenizer.tokenize(self.tokenizer.eos).to(device)
-
+        # check dtype if self.tokenizer.eos is int
+        if isinstance(self.tokenizer.eos, int):
+            eos_token_ids = torch.LongTensor([self.tokenizer.eos]).to(device)
+        else:
+            # is a tensor
+            eos_token_ids = self.tokenizer.tokenize(self.tokenizer.eos).to(device)
+        
         if input_ids is None:
             input = self.tokenizer.tokenize(input_string)
-            input = input.unsqueeze(0).to(device)
+            if isinstance(input, list):
+                input = torch.LongTensor(input).unsqueeze(0).to(device)
+            # is a tensor
+            else:
+                input = input.unsqueeze(0).to(device)
+            
         else:
             input = input_ids
         x = input
@@ -76,6 +87,7 @@ class Generator:
             mem_after_tok = torch.cuda.memory_allocated(device=x.device) / 1e9
             print_rank_0(f"Memory after tokenization: {mem_after_tok} GB")
             print_rank_0("Starting generation...")
+            torch.cuda.memory._record_memory_history(enabled=True)
             if input_string is not None:
                 print_rank_0("Prompt: " + input_string)
             else:
@@ -128,10 +140,16 @@ class Generator:
                 x = torch.cat([x, new_idx[:, None]], dim=-1)
 
         if verbose:
-            y = self.tokenizer.detokenize_batch(
-                generation[:, : i + 1],
-                skip_special_tokens=skip_special_tokens,
-            )
+            if isinstance(self.tokenizer, CharLevelTokenizer):
+                y = self.tokenizer.detokenize_batch(
+                    generation[:, : i + 1],
+                    # skip_special_tokens=skip_special_tokens,  # this isn't supported in the Char level tokenizer
+                )
+            else:
+                y = self.tokenizer.detokenize_batch(
+                    generation[:, : i + 1],
+                    skip_special_tokens=skip_special_tokens,
+                )                
 
             for until in self.untils:
                 if until in y:
