@@ -36,3 +36,4 @@ inference_mode: True
 tokenizer_type: CharLevelTokenizer  # HFAutoTokenizer
 # vocab_file: "/mnt/spring/tmp/recurrent-inference/tokenizers/mistral/"  # look into savanna tokenizer init
 prefill_style: fft  # need to try out
+mlp_activation: gelu
