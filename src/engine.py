@@ -84,11 +84,14 @@ class HyenaInferenceEngine:
             z_pre = fir_fn(
                 u,
                 weight,
-                bias,
+                bias=None,  # don't pass it here, add manually instead!  source of small error
                 stride=1,
                 padding=fir_length - 1,
                 groups=u.shape[1],
             )[..., :L]
+
+            # add manually instead!  source of small error
+            z_pre = z_pre + bias[None, :, None]
 
         # handle padding post fir, the only place with biases
         if type(padding_mask) == torch.Tensor:
