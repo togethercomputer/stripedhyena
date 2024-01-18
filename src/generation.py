@@ -108,10 +108,12 @@ class Generator:
                     inference_params_dict_out["mha"].seqlen_offset += 1
                     inference_params_dict_out["hyena"].seqlen_offset += 1
 
-            logits, inference_params_dict_out = self.model(
-                x,
-                inference_params_dict=inference_params_dict_out,
-            )
+            # do forward pass with no gradient
+            with torch.no_grad():
+                logits, inference_params_dict_out = self.model(
+                    x,
+                    inference_params_dict=inference_params_dict_out,
+                )
 
             last_logits = logits[:, -1]
 
