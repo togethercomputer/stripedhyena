@@ -16,6 +16,11 @@ try:
     from flash_attn.modules.mha import MHA
 except ImportError:
     "flash_attn not installed"
+    
+try:
+    from src.positional_embeddings import swap_mha_rope
+except ImportError:
+    "could not import swap_mha_rope from src.positional_embeddings"
 
 
 class AttentionBlock(nn.Module):
@@ -43,6 +48,13 @@ class AttentionBlock(nn.Module):
             out_proj_bias=config.get("mha_out_proj_bias", True),
             use_flash_attn=self.config.use_flash_attn,
         ).to(dtype=dtype)
+        
+        # check if using interpolated rotary pos emb from config, and swap the rope emb
+        if config.get("use_interpolated_rotary_pos_emb", False):
+            swap_mha_rope(
+                mha=self.inner_mha_cls,
+                kwargs_new_rope={'scaling_factor': config.get("rotary_emb_scaling_factor", 1.)},
+            )
 
         if self.config.get("smeared_gqa", False):
             self.inner_mha_cls.num_heads_kv = self.inner_mha_cls.num_heads
