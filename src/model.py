@@ -312,7 +312,7 @@ class StripedHyena(nn.Module):
         self.unembed = self.emb if config.tie_embeddings else VocabParallelEmbedding(config)
         self.scratchpad = None
 
-        if config.get("use_flashfft", "False"):
+        if config.get("use_flashfft", "True"):
             try:
                 from flashfftconv import FlashFFTConv
                 self.flash_fft = FlashFFTConv(config.seqlen, dtype=torch.bfloat16)
