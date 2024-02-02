@@ -1,3 +1,4 @@
 tokenizers 
 transformers
-flash_attn 
+flash_attn
+flashfftconv
