@@ -80,7 +80,7 @@ We also provide an entry script to generate with StripedHyena models hosted on H
 
 Choose your model id, then run the following command:
 ```
-python generate_transformers.py --model_id <model_id> --input-file ./test_prompt.txt
+python generate_transformers.py --model-name <model_id> --input-file ./test_prompt.txt
 ```
 
 ## Testing Correctness
@@ -103,3 +103,16 @@ Several issues can be resolved by reinstalling the latest version of `flash_attn
 
 StripedHyena is a mixed precision model. Make sure to keep your `poles` and `residues` in `float32` precision.
 
+## Cite
+
+If have found the pretrained models or architecture useful for you research or application, consider citing: 
+```
+@software{stripedhyena,
+  title        = {{StripedHyena: Moving Beyond Transformers with Hybrid Signal Processing Models}},
+  author       = { Poli, Michael and Wang, Jue and Massaroli, Stefano and Quesnelle, Jeffrey and Nguyen, Eric and Thomas, Armin},
+  month        = 12,
+  year         = 2023,
+  url          = { https://github.com/togethercomputer/stripedhyena },
+  doi          = { 10.57967/hf/1595 },
+}
+```

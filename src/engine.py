@@ -1,6 +1,7 @@
 # Copyright (c) Together
 # This software is distributed under the terms of the Apache License, Version 2.0
 # Author: Michael Poli
+import gc
 
 import torch
 import torch.nn as nn
@@ -11,6 +12,15 @@ try:
 except:
     pass
 from src.utils import column_split
+
+IIR_PREFILL_MODES = [
+    "recurrence",
+    "modal-fft",
+    "hybrid-modal-recurrence",
+    "modal-scan",
+    "canonical-fft",
+    "iir-fir-caching",
+]
 
 
 def canonicalize_modal_system(poles, residues):
@@ -26,25 +36,28 @@ def canonicalize_modal_system(poles, residues):
     raise NotImplementedError
 
 
-IIR_PREFILL_MODES = [
-    "recurrence",
-    "modal-fft",
-    "hybrid-modal-recurrence",
-    "modal-scan",
-    "canonical-fft",
-    "iir-fir-caching",
-]
+def list_tensors(idx):
+    for obj in gc.get_objects():
+        try:
+            if torch.is_tensor(obj) and isinstance(obj, torch.Tensor):
+                # dump to log
+                print(type(obj), obj.size())
+                el = obj[0]
+                with open(f"tensors_{idx}.txt", "a") as f:
+                    f.write(f"{type(obj)} {obj.size()} {el}\n")
+        except Exception as e:
+            pass
 
 
 class HyenaInferenceEngine:
     def __init__(
-        self, fir_fn=None, fftconv_fn=None, iir_prefill_style="modal-fft", layer_idx=None
+        self,
+        fir_fn=None,
+        iir_prefill_style="modal-fft",
+        layer_idx=None,
     ) -> None:
         self.fir_fn = fir_fn
-        self.fftconv_fn = fftconv_fn
-        assert (
-            iir_prefill_style in IIR_PREFILL_MODES
-        ), f"iir_prefill_style must be one of {IIR_PREFILL_MODES}"
+        assert iir_prefill_style in IIR_PREFILL_MODES, f"iir_prefill_style must be one of {IIR_PREFILL_MODES}"
         self.iir_prefill_style = iir_prefill_style
         self.layer_idx = layer_idx
         self.low_mem_mode = False
@@ -92,7 +105,25 @@ class HyenaInferenceEngine:
 
         return z_pre, fir_state
 
-    def parallel_iir(self, z_pre, h, D, L, poles, t, dims, layer_idx, inference_params=None, prefill_style="fft", fftconv_fn=None, padding_mask=None, use_flashfft=False, column_split_hyena=False, long_fir_threshold=None):
+    def parallel_iir(
+        self,
+        z_pre,
+        h,
+        D,
+        L,
+        poles,
+        residues,
+        t,
+        dims,
+        layer_idx,
+        inference_params=None,
+        prefill_style="fft",
+        fftconv_fn=None,
+        padding_mask=None,
+        use_flashfft=False,
+        column_split_hyena=False,
+        long_fir_threshold=None,
+    ):
         """Compute the output state of the short convolutional filter."""
         fft_size = 2 * L
         hidden_size, num_attention_heads, hidden_size_per_attention_head, _, _ = dims
@@ -105,7 +136,7 @@ class HyenaInferenceEngine:
                 z_pre.shape[2],
             )
             x2, x1, v = (
-                z[:, :, : hidden_size_per_attention_head],
+                z[:, :, :hidden_size_per_attention_head],
                 z[
                     :,
                     :,
@@ -123,34 +154,46 @@ class HyenaInferenceEngine:
 
         x1v = x1 * v
 
-        if use_flashfft and (L % 2) == 0:  # only works with even L
-            y = fftconv_fn(
-                x1v.to(dtype=torch.bfloat16).contiguous(),
-                h.to(dtype=torch.float32),
+        if inference_params is not None and prefill_style == "recurrence":
+            y = self.prefill_via_direct_recurrence(
+                inference_params=inference_params,
+                x1v=x1v,
+                L=L,
+                poles=poles,
+                residues=residues,
             )
-            X_s = None
 
-        elif long_fir_threshold is None:
-            H = torch.fft.rfft(h.to(dtype=torch.float32), n=fft_size) / fft_size
-            X_s = torch.fft.fft(x1v.to(dtype=torch.float32), n=fft_size)
-            X = X_s[..., :H.shape[-1]]  
-            if len(z_pre.shape) > 3:
-                H = H.unsqueeze(1)
-            y = torch.fft.irfft(X * H, n=fft_size, norm="forward")[..., :L]
         else:
-            assert h.shape[0] == 1, "batch size must be 1 for long_fir_threshold"
-            h = h[0][:, None]  # rearrange to d, 1, l for depthwise conv1d
-            h = h[..., : long_fir_threshold]
-            y = F.conv1d(
-                x1v,
-                h.to(dtype=x1v.dtype),
-                stride=1,
-                groups=x1v.shape[1],
-                padding=h.shape[-1] - 1,
-            )[..., :L]
+            if use_flashfft and (L % 2) == 0:  # only works with even L
+                y = fftconv_fn(
+                    x1v.to(dtype=torch.bfloat16).contiguous(),
+                    h.to(dtype=torch.float32),
+                )
+                X_s = None
+
+            elif long_fir_threshold is None:
+                H = torch.fft.rfft(h.to(dtype=torch.float32), n=fft_size) / fft_size
+                X_s = torch.fft.fft(x1v.to(dtype=torch.float32), n=fft_size)
+                X = X_s[..., : H.shape[-1]]
+                if len(z_pre.shape) > 3:
+                    H = H.unsqueeze(1)
+                y = torch.fft.irfft(X * H, n=fft_size, norm="forward")[..., :L]
+
+            else:
+                assert h.shape[0] == 1, "batch size must be 1 for long_fir_threshold"
+                h = h[0][:, None]  # rearrange to d, 1, l for depthwise conv1d
+                h = h[..., :long_fir_threshold]
+                y = F.conv1d(
+                    x1v,
+                    h.to(dtype=x1v.dtype),
+                    stride=1,
+                    groups=x1v.shape[1],
+                    padding=h.shape[-1] - 1,
+                )[..., :L]
 
         y = y.to(dtype=x1v.dtype)
         y = (y + x1v * D.unsqueeze(-1)) * x2
+
         if inference_params is not None:
             if prefill_style == "fft":
                 self.prefill_via_modal_fft(
@@ -163,27 +206,24 @@ class HyenaInferenceEngine:
                     dims=dims,
                     layer_idx=layer_idx,
                     use_flashfft=use_flashfft,
+                    fftconv_fn=fftconv_fn,
                 )
 
             elif prefill_style == "recurrence":
-                self.prefill_via_direct_recurrence(
-                    inference_params=inference_params,
-                    x1v=x1v,
-                    L=L,
-                    poles=poles,
-                )
-
+                # recurrent prefill is done before
+                pass
             else:
                 raise NotImplementedError
             if self.low_mem_mode:
-                del z_pre, x2, x1, v, x1v, h
+                # TODO: smarter gc
+                del z_pre, x2, x1, v, x1v, h, poles, residues
                 torch.cuda.empty_cache()
 
         return y.permute(0, 2, 1)
 
     def step_fir(self, u, fir_state, weight, bias=None):
         """Step the FIR filter.
-        
+
         Note:
         `fir_state` contains the last `short_filter_length - 1` elements of `u`: `u_(L-2), u_{L-1), ...`
         We assume dimensions of `short_filter_weight` to be `[d, 1, short_filter_len]` (SISO / multi SISO layout).
@@ -220,26 +260,43 @@ class HyenaInferenceEngine:
     def prefill_via_fir_caching(self, u, inference_params, L, *args, **kwargs):
         """Turns the IIR filter into a FIR and uses a cache for decoding."""
         raise NotImplementedError(":)")
-    
-    def prefill_via_direct_recurrence(self, inference_params, x1v, L, poles, *args, **kwargs):
+
+    def prefill_via_direct_recurrence(
+        self, inference_params, x1v, L, residues, poles, *args, **kwargs
+    ) -> torch.Tensor:
         """
         Compute the IIR state via explicit SSM recurrence (modal form)
+
+        This is the most memory efficient prefilling method for Hyena filters.
+
+        Note:
+            dtypes: [state: float32, poles: float32, x1v: bfloat16, output: bfloat16]
         """
+        state_dim = poles.shape[1]
         x1v_ = x1v[..., None, None]  # b, d, l, sdim, reim
-        x1v_ = x1v_.repeat(1, 1, 1, 1, 2)  # b, d, l, sdim, reim
+        x1v_ = x1v_.repeat(1, 1, 1, state_dim, 2)  # b, d, l, sdim, reim
+        x1v_[..., 1] = 0
 
-        state = x1v_[:, :, 0]
-        poles = poles[:, :, 0].to(dtype=torch.float32)
+        state = 0 * x1v_[:, :, 0]
+        output = 0 * x1v_[:, :, :, 0, 0]  # b, d, l
 
+        # suppress dummy seqlen dimension
+        poles = poles[:, :, 0][None]
+        residues = residues[:, :, 0][None].repeat(x1v_.shape[0], 1, 1, 1)  # b, d, sdim, reim
+
+        # state: b, d, sdim, reim
+        # poles: 1, d, sdim, reim
+        # x1v_: b, d, l, sdim, reim
         for i in range(L):
-            state = poles * state + x1v_[:, :, i]
-        inference_params.state_dict[self.layer_idx] = torch.view_as_complex(
-            state.to(dtype=torch.float32)
-        )
+            state[..., 0] = poles[..., 0] * state[..., 0] - poles[..., 1] * state[..., 1] + x1v_[:, :, i, :, 0]
+            state[..., 1] = poles[..., 0] * state[..., 1] + poles[..., 1] * state[..., 0] + x1v_[:, :, i, :, 1] 
+            output[:, :, i] = torch.sum(residues * state, dim=-2)[..., 0]  # .real
+            
+        inference_params.state_dict[self.layer_idx] = torch.view_as_complex(state.to(dtype=torch.float32))
 
-    def prefill_via_hybrid_recurrence(
-        self, inference_params, u, log_poles, x1v_f_a, L, *args, **kwargs
-    ):
+        return output
+
+    def prefill_via_hybrid_recurrence(self, inference_params, u, log_poles, x1v_f_a, L, *args, **kwargs):
         """
         Compute the IIR state via hybrid recurrence-convolution over blocks
         """
@@ -258,50 +315,60 @@ class HyenaInferenceEngine:
         """
         raise NotImplementedError(":)")
 
-    def prefill_via_modal_fft(self, inference_params, x1v, L, poles, t, dims, layer_idx, X_s=None, use_flashfft=False, state_dtype=torch.complex64, *args, **kwargs):
+    def prefill_via_modal_fft(
+        self,
+        inference_params,
+        x1v,
+        L,
+        poles,
+        t,
+        dims,
+        layer_idx,
+        X_s=None,
+        use_flashfft=False,
+        fftconv_fn=None,
+        state_dtype=torch.complex64,
+        *args,
+        **kwargs,
+    ):
         """
         Compute the IIR state via a single FFT, using the poles of the SSM in modal form.
         """
-        # When the model has a long convolution derived from a SSM in modal form and prefill_style is "fft", 
+        # When the model has a long convolution derived from a SSM in modal form and prefill_style is "fft",
         # we split the filter into poles and residues and reuse FFT computation on the input.
         # This optimization is currently not supported when using flashfftconv.
-        hidden_size, _, _, state_size, hyena_filter_groups  = dims
+        hidden_size, _, _, state_size, hyena_filter_groups = dims
 
         if use_flashfft:
             # using real states
             poles = poles.squeeze().reshape(poles.shape[0], -1)[..., None]
 
-            state_s = poles ** t
+            state_s = poles**t
             if hyena_filter_groups > 1:
-                raise NotImplementedError   
+                raise NotImplementedError
 
             x1v = x1v[:, :, None].repeat(1, 1, 2 * state_size, 1)
             x1v = x1v.reshape(x1v.shape[0], -1, x1v.shape[-1])
             state_s = state_s[None]
 
-            state = self.fftconv_fn(
+            state = fftconv_fn(
                 x1v.contiguous(),
                 state_s.to(dtype=torch.float32),
             )
             state = state[..., L - 1].reshape(x1v.shape[0], hidden_size, state_size, 2)
-            state = torch.view_as_complex(state.contiguous())
-            inference_params.state_dict[self.layer_idx] = state.to(dtype=state_dtype)
+            state = torch.view_as_complex(state.contiguous().to(dtype=torch.float32))
+            inference_params.state_dict[self.layer_idx] = state
         else:
             assert X_s is not None
             bs = x1v.shape[0]
             fft_size = 2 * L
             poles = torch.view_as_complex(poles.to(torch.float32))
-            state_s = poles ** t
-            state_S = torch.fft.fft(state_s, n=fft_size).repeat(
-                bs, 1, 1, 1
-            )  # B, D, state_dim, 2 * L
+            state_s = poles**t
+            state_S = torch.fft.fft(state_s, n=fft_size).repeat(bs, 1, 1, 1)  # B, D, state_dim, 2 * L
             if hyena_filter_groups > 1:
-                state_S = state_S.repeat_interleave(
-                    hidden_size // hyena_filter_groups, 1
-                )
+                state_S = state_S.repeat_interleave(hidden_size // hyena_filter_groups, 1)
             state = torch.fft.ifft(X_s[..., None, :] * state_S, n=fft_size)
             inference_params.state_dict[layer_idx] = state[..., L - 1].to(dtype=state_dtype)
-
 
     def _compute_state(self, log_poles, u, t, L, *args, **kwargs):
         """
@@ -313,6 +380,6 @@ class HyenaInferenceEngine:
         fft_size = 2 * L
         x = (log_poles * t).exp()
         # [batch, hidden_size, state_dim, 2 * seqlen]
-        X = torch.fft.fft(x, n=fft_size).repeat(bs, 1, 1, 1)  
+        X = torch.fft.fft(x, n=fft_size).repeat(bs, 1, 1, 1)
         state = torch.fft.ifft(U[..., None, :] * X, n=fft_size)[..., :L]
         return state

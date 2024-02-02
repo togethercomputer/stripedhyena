@@ -2,9 +2,10 @@
 # This software is distributed under the terms of the Apache License, Version 2.0
 # Author: Michael Poli
 
-from torch import Tensor
 from dataclasses import dataclass, field
 from typing import Optional
+
+from torch import Tensor
 
 
 # https://github.com/Dao-AILab/flash-attention/blob/main/flash_attn/utils/generation.py
@@ -34,6 +35,7 @@ class RecurrentInferenceParams:
 
     fir_filter_length: int = 3
     state_dim: int = 16
+    # seqlen_offset not used
     seqlen_offset: int = 0
     fir_state_dict: dict = field(default_factory=dict)
     state_dict: dict = field(default_factory=dict)

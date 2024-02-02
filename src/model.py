@@ -7,19 +7,15 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from src.utils import print_rank_0
 from src.cache import InferenceParams, RecurrentInferenceParams
 from src.engine import HyenaInferenceEngine
-from src.layers import (
-    RMSNorm,
-    ParallelGatedMLP,
-    VocabParallelEmbedding,
-)
-from src.utils import column_split
+from src.layers import ParallelGatedMLP, RMSNorm, VocabParallelEmbedding
+from src.utils import column_split, print_rank_0
 
 try:
     from flash_attn.modules.mha import MHA
-except ImportError: "flash_attn not installed"
+except ImportError:
+    "flash_attn not installed"
 
 
 class AttentionBlock(nn.Module):
@@ -50,9 +46,7 @@ class AttentionBlock(nn.Module):
 
         if self.config.get("smeared_gqa", False):
             self.inner_mha_cls.num_heads_kv = self.inner_mha_cls.num_heads
-        self.inner_mha_cls.rotary_emb.register_buffer(
-            "inv_freq", self.inner_mha_cls.rotary_emb.inv_freq
-        )
+        self.inner_mha_cls.rotary_emb.register_buffer("inv_freq", self.inner_mha_cls.rotary_emb.inv_freq)
 
         self.mlp = ParallelGatedMLP(config).to(dtype=mlp_dtype)
 
@@ -102,9 +96,7 @@ class ParallelHyenaFilter(nn.Module):
 
         # after preprocessing here we can save the new checkpoint
         self.short_filter_length = config.short_filter_length
-        self.short_filter_weight = nn.Parameter(
-            torch.randn(3 * config.hidden_size, 1, config.short_filter_length)
-        )
+        self.short_filter_weight = nn.Parameter(torch.randn(3 * config.hidden_size, 1, config.short_filter_length))
         self.short_filter_bias = (
             nn.Parameter(torch.randn(3 * config.hidden_size)) if config.short_filter_bias else None
         )
@@ -133,27 +125,29 @@ class ParallelHyenaFilter(nn.Module):
         self.fftconv_fn = None
         self.long_fir_threshold = config.get("long_fir_threshold", None)
         if self.long_fir_threshold is not None:
-            assert (
-                self.use_flashfft is False
-            ), "long_fir_threshold not compatible with fused flashfft"
+            assert self.use_flashfft is False, "long_fir_threshold not compatible with fused flashfft"
 
         self.num_systems = self.hidden_size // self.hyena_filter_groups
-        self.poles = nn.Parameter(torch.randn(self.num_systems, self.state_size, 1, 2))
+
+        poles = torch.randn(self.num_systems, self.state_size, 1, 2)
+
+        # TODO: bring over init from internals
+        poles[..., 0] = 1e-2 * torch.randn(self.num_systems, self.state_size, 1)
+        poles[..., 1] = 1e-3 * torch.randn(self.num_systems, self.state_size, 1)
+
+        self.poles = nn.Parameter(poles)
+
         self.residues = nn.Parameter(torch.randn(self.num_systems, self.state_size, 1, 2))
         self.h = None
 
     def forward(self, u, inference_params=None, padding_mask=None, *args, **kwargs):
-        if (
-            inference_params is not None
-            and self.layer_idx in inference_params.fir_state_dict.keys()
-        ):
+        if inference_params is not None and self.layer_idx in inference_params.fir_state_dict.keys():
             return self.sequential_forward(u, inference_params)
 
         else:
             return self.parallel_forward(u, inference_params, padding_mask)
-        
-    def parallel_forward(self, u, inference_params=None, padding_mask=None):
 
+    def parallel_forward(self, u, inference_params=None, padding_mask=None):
         L = u.shape[1]
         z_pre, fir_state = self.engine.parallel_fir(
             self.fir_fn,
@@ -178,8 +172,14 @@ class ParallelHyenaFilter(nn.Module):
             h = h.repeat_interleave(self.hidden_size // self.hyena_filter_groups, 1)
 
         # if inference_params is not None, we plan to perform generation:
-        # prefilling for the IIR portion of the filter is handled by the engine. 
-        dims = (self.hidden_size, self.num_attention_heads, self.hidden_size_per_attention_head, self.state_size, self.hyena_filter_groups)
+        # prefilling is handled by the engine.
+        dims = (
+            self.hidden_size,
+            self.num_attention_heads,
+            self.hidden_size_per_attention_head,
+            self.state_size,
+            self.hyena_filter_groups,
+        )
         y = self.engine.parallel_iir(
             z_pre,
             h,
@@ -187,6 +187,7 @@ class ParallelHyenaFilter(nn.Module):
             L,
             t=self.t,
             poles=self.poles,
+            residues=self.residues,
             dims=dims,
             inference_params=inference_params,
             layer_idx=self.layer_idx,
@@ -197,7 +198,7 @@ class ParallelHyenaFilter(nn.Module):
             long_fir_threshold=self.long_fir_threshold,
             padding_mask=padding_mask,
         )
-       
+
         return y, inference_params
 
     def sequential_forward(self, u, inference_params):
@@ -256,7 +257,7 @@ class ParallelHyenaFilter(nn.Module):
             torch.view_as_complex(self.residues.to(filter_dtype)),
             torch.view_as_complex(self.poles.to(filter_dtype)).log(),
         )
-        h = (residues * (log_poles * self.t).exp()).real.sum(1)[None]  
+        h = (residues * (log_poles * self.t).exp()).real.sum(1)[None]
         return h, filter_dtype, log_poles, residues
 
 
@@ -265,30 +266,46 @@ class ParallelGatedConvBlock(nn.Module):
         super().__init__()
         self.config = config
         self.layer_idx = layer_idx
+        self.low_mem_mode = config.get("low_mem_mode", False)
         dtype = config.get("hyena_block_dtype", torch.float32)
         mlp_dtype = config.get("mlp_dtype", torch.bfloat16)
-        self.pre_norm, self.post_norm = RMSNorm(config).to(dtype=dtype), RMSNorm(config).to(
-            dtype=dtype
-        )
+        self.pre_norm, self.post_norm = RMSNorm(config).to(dtype=dtype), RMSNorm(config).to(dtype=dtype)
         self.filter = ParallelHyenaFilter(config, layer_idx).to(dtype=dtype)
         self.projections = nn.Linear(config.hidden_size, 3 * config.hidden_size)
         self.out_filter_dense = nn.Linear(config.hidden_size, config.hidden_size).to(dtype)
         self.mlp = ParallelGatedMLP(config).to(dtype=mlp_dtype)
 
+        self.proj_norm_fn = self.proj_norm
+        self.res_mlp_norm_fn = self.res_mlp_norm
+
+        if self.config.get("compile", False):
+            self.proj_norm_fn = torch.compile(self.proj_norm, fullgraph=True, dynamic=False, mode="reduce-overhead")
+            self.res_mlp_norm_fn = torch.compile(
+                self.res_mlp_norm, fullgraph=True, dynamic=False, mode="reduce-overhead"
+            )
+
+    def proj_norm(self, x):
+        return self.projections(self.pre_norm(x))
+
+    def res_mlp_norm(self, x):
+        return self.mlp(self.post_norm(x)) + x
+
     def forward(self, u, inference_params=None, padding_mask=None, *args, **kwargs):
-        z = self.projections(self.pre_norm(u))
+        z = self.proj_norm_fn(u)
+
         if type(padding_mask) == torch.Tensor:  # guard against bias
             z = z * padding_mask[..., None]
 
-        z, inference_params = self.filter(
-            z, inference_params=inference_params, padding_mask=padding_mask
-        )
+        z, inference_params = self.filter(z, inference_params=inference_params, padding_mask=padding_mask)
 
-        u = self.out_filter_dense(z) + u
+        z_in = self.out_filter_dense(z) + u
+
         if type(padding_mask) == torch.Tensor:  # guard against bias
-            u = u * padding_mask[..., None]
-        u = self.mlp(self.post_norm(u)) + u
-        return u, inference_params
+            z_in = z_in * padding_mask[..., None]
+
+        y = self.res_mlp_norm_fn(z_in)
+
+        return y, inference_params
 
 
 def get_block(config, layer_idx, flash_fft=None):
@@ -310,7 +327,6 @@ class StripedHyena(nn.Module):
         self.embedding_layer = VocabParallelEmbedding(config)
         self.norm = RMSNorm(config) if config.get("final_norm", True) else None
         self.unembed = self.emb if config.tie_embeddings else VocabParallelEmbedding(config)
-        self.scratchpad = None
 
         if config.get("use_flashfft", "True"):
             try:
@@ -321,8 +337,7 @@ class StripedHyena(nn.Module):
             self.flash_fft = None
 
         self.blocks = nn.ModuleList(
-            get_block(config, layer_idx, flash_fft=self.flash_fft)
-            for layer_idx in range(config.num_layers)
+            get_block(config, layer_idx, flash_fft=self.flash_fft) for layer_idx in range(config.num_layers)
         )
 
     def forward(self, x, inference_params_dict=None, padding_mask=None):
@@ -335,6 +350,7 @@ class StripedHyena(nn.Module):
             )
         else:
             x, inference_params_dict_out = self.stateless_forward(x, padding_mask=padding_mask)
+
         x = self.norm(x)
         x = self.unembed.unembed(x)
         return x, inference_params_dict_out
@@ -395,13 +411,9 @@ class StripedHyena(nn.Module):
             if type(block) == ParallelGatedConvBlock:
                 if type(block.filter) == ParallelHyenaFilter:
                     print(f"Loading poles and residues for block {block_idx}")
-                    poles = torch.load(
-                        path + f"/approx_poles_{block_idx+1}.pt", map_location="cpu"
-                    ) 
+                    poles = torch.load(path + f"/approx_poles_{block_idx+1}.pt", map_location="cpu")
                     poles = torch.view_as_real(poles)
-                    residues = torch.load(
-                        path + f"/approx_residues_{block_idx+1}.pt", map_location="cpu"
-                    )
+                    residues = torch.load(path + f"/approx_residues_{block_idx+1}.pt", map_location="cpu")
                     residues = torch.view_as_real(residues)
                     poles = poles.permute(1, 0, 2).unsqueeze(-2)
                     residues = residues.permute(1, 0, 2).unsqueeze(-2)
@@ -411,7 +423,7 @@ class StripedHyena(nn.Module):
 
     def to_bfloat16_except_poles_residues(self):
         """Convert all parameters to bfloat16 except for the poles and residues.
-        
+
         Particularly important for longer prompts.
         """
         for k, p in self.named_parameters():

@@ -1,5 +1,13 @@
 import torch
 
+
+def grab_first_if_tuple(x):
+    if x.__class__.__name__ == "tuple":
+        return x[0]
+    else:
+        return x
+
+
 def column_split(x, num_heads, head_size):
     """Split a tensor with `num_heads` alongside the head dimension, instead of
     across heads. Fixed to three projections
@@ -83,6 +91,4 @@ class VocabUtility:
     @staticmethod
     def vocab_range_from_global_vocab_size(global_vocab_size, rank, world_size):
         per_partition_vocab_size = divide(global_vocab_size, world_size)
-        return VocabUtility.vocab_range_from_per_partition_vocab_size(
-            per_partition_vocab_size, rank, world_size
-        )
+        return VocabUtility.vocab_range_from_per_partition_vocab_size(per_partition_vocab_size, rank, world_size)
