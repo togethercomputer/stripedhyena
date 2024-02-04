@@ -106,15 +106,19 @@ class ParallelHyenaFilter(nn.Module):
         self.data_dtype = None
 
         if self.use_flash_depthwise:
-            self.fir_fn = FlashDepthwiseConv1d(
-                channels=3 * self.hidden_size,
-                kernel_size=self.short_filter_length,
-                padding=self.short_filter_length - 1,
-                weights=self.short_filter_weight,
-                bias=self.short_filter_bias,
-                device=None,
-                dtype=self.config.get("depthwise_dtype", torch.bfloat16),
-            )
+            try:
+                from flashfftconv import FlashDepthwiseConv1d
+        
+                self.fir_fn = FlashDepthwiseConv1d(
+                    channels=3 * self.hidden_size,
+                    kernel_size=self.short_filter_length,
+                    padding=self.short_filter_length - 1,
+                    weights=self.short_filter_weight,
+                    bias=self.short_filter_bias,
+                    device=None,
+                    dtype=self.config.get("depthwise_dtype", torch.bfloat16),
+                )
+            except ImportError: "flashfftconv not installed"
         else:
             self.fir_fn = F.conv1d
 
@@ -324,10 +328,11 @@ class StripedHyena(nn.Module):
         self.norm = RMSNorm(config) if config.get("final_norm", True) else None
         self.unembed = self.emb if config.tie_embeddings else VocabParallelEmbedding(config)
 
-        if config.get("use_flashfft", "False"):
-            from flashfftconv import FlashFFTConv
-
-            self.flash_fft = FlashFFTConv(2 * config.seqlen, dtype=torch.bfloat16)
+        if config.get("use_flashfft", "True"):
+            try:
+                from flashfftconv import FlashFFTConv
+                self.flash_fft = FlashFFTConv(config.seqlen, dtype=torch.bfloat16)
+            except ImportError: "flashfftconv not installed"
         else:
             self.flash_fft = None
 
