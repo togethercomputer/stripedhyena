@@ -67,7 +67,6 @@ def test_long_prefill(pytestconfig):
     #            -32.0000]]], device='cuda:0', dtype=torch.bfloat16,
     #        grad_fn=<UnsafeViewBackward0>)
 
-
     # 2095a87b98fb58b67603fbf29effda0d958b6627
     # tensor([[[  12.3125,  -68.5000,    6.9688,  ..., -134.0000,   43.5000,
     #           -113.0000],
@@ -84,7 +83,6 @@ def test_long_prefill(pytestconfig):
     #              9.8750]]], device='cuda:0', dtype=torch.bfloat16,
     #        grad_fn=<UnsafeViewBackward0>)
 
-
     print(logits_rec)
     # torch.cuda.memory._dump_snapshot("my_snapshot.pickle")
     assert False
@@ -97,7 +95,7 @@ def test_recurrent_prefill(pytestconfig):
 
     config_path = "./configs/sh-stem-test.yml"
     config = dotdict(yaml.load(open(config_path), Loader=yaml.FullLoader))
-    config.use_flashfft = False # True
+    config.use_flashfft = False  # True
     config.seqlen = L
     vocab_size = config.vocab_size
 
@@ -187,7 +185,6 @@ def test_recurrent_prefill(pytestconfig):
     #             58.2500]]], device='cuda:0', dtype=torch.bfloat16,
     #        grad_fn=<UnsafeViewBackward0>)
 
-
     # 2095a87b98fb58b67603fbf29effda0d958b6627
     # tensor([[[ 0.1718-1.7217e-04j,  0.1700+1.1340e-04j],
     #          [-0.2949+2.2665e-04j, -0.2977-1.4746e-05j],
@@ -233,7 +230,6 @@ def test_recurrent_prefill(pytestconfig):
     #          [ -35.7500,   78.0000, -134.0000,  ...,  -27.0000,   -2.0938,
     #             58.2500]]], device='cuda:0', dtype=torch.bfloat16,
     #        grad_fn=<UnsafeViewBackward0>)
-
 
     assert torch.allclose(state_fft, state_rec, atol=1e-3)
     assert torch.allclose(logits_fft, logits_rec, atol=1e-4)
