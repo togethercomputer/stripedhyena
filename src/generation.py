@@ -7,6 +7,7 @@
 import torch
 
 from src.sample import sample
+from src.tokenizer import CharLevelTokenizer
 from src.utils import print_rank_0
 
 
@@ -32,11 +33,20 @@ class Generator:
         stop_at_eos=True,
         max_seqlen=None,
     ):
-        eos_token_ids = self.tokenizer.tokenize(self.tokenizer.eos).to(device)
+        if isinstance(self.tokenizer.eos, int):
+            eos_token_ids = torch.LongTensor([self.tokenizer.eos]).to(device)
+        else:
+            # is a tensor
+            eos_token_ids = self.tokenizer.tokenize(self.tokenizer.eos).to(device)
 
         if input_ids is None:
             input = self.tokenizer.tokenize(input_string)
-            input = input.unsqueeze(0).to(device)
+            if isinstance(input, list):
+                input = torch.LongTensor(input).unsqueeze(0).to(device)
+            # is a tensor
+            else:
+                input = input.unsqueeze(0).to(device)
+
         else:
             input = input_ids
         x = input
@@ -96,10 +106,12 @@ class Generator:
                     inference_params_dict_out["mha"].seqlen_offset += 1
                     inference_params_dict_out["hyena"].seqlen_offset += 1
 
-            logits, inference_params_dict_out = self.model(
-                x,
-                inference_params_dict=inference_params_dict_out,
-            )
+            # do forward pass with no gradient
+            with torch.no_grad():
+                logits, inference_params_dict_out = self.model(
+                    x,
+                    inference_params_dict=inference_params_dict_out,
+                )
 
             last_logits = logits[:, -1]
 
@@ -113,7 +125,7 @@ class Generator:
             if stop_at_eos and (generation[0, -2:] == eos_token_ids).all():
                 print_rank_0("Stopping generation at EOS")
 
-            if print_generation and verbose:
+            if print_generation and verbose and batch_size == 1:
                 print_rank_0(
                     f"{self.tokenizer.detokenize([new_idx.item()])}",
                     end=" ",
@@ -128,10 +140,10 @@ class Generator:
                 x = torch.cat([x, new_idx[:, None]], dim=-1)
 
         if verbose:
-            y = self.tokenizer.detokenize_batch(
-                generation[:, : i + 1],
-                skip_special_tokens=skip_special_tokens,
-            )
+            kwargs = {}
+            if not isinstance(self.tokenizer, CharLevelTokenizer):
+                kwargs["skip_special_tokens"] = skip_special_tokens
+            y = self.tokenizer.detokenize_batch(generation[:, : i + 1], **kwargs)
 
             for until in self.untils:
                 if until in y:
