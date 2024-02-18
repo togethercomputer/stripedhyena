@@ -7,8 +7,8 @@
 import torch
 
 from src.sample import sample
-from src.utils import print_rank_0
 from src.tokenizer import CharLevelTokenizer
+from src.utils import print_rank_0
 
 
 class Generator:
@@ -38,7 +38,7 @@ class Generator:
         else:
             # is a tensor
             eos_token_ids = self.tokenizer.tokenize(self.tokenizer.eos).to(device)
-        
+
         if input_ids is None:
             input = self.tokenizer.tokenize(input_string)
             if isinstance(input, list):
@@ -46,7 +46,7 @@ class Generator:
             # is a tensor
             else:
                 input = input.unsqueeze(0).to(device)
-            
+
         else:
             input = input_ids
         x = input
@@ -143,7 +143,7 @@ class Generator:
             kwargs = {}
             if not isinstance(self.tokenizer, CharLevelTokenizer):
                 kwargs["skip_special_tokens"] = skip_special_tokens
-            y = self.tokenizer.detokenize_batch(generation[:, :i+1], **kwargs)
+            y = self.tokenizer.detokenize_batch(generation[:, : i + 1], **kwargs)
 
             for until in self.untils:
                 if until in y:
