@@ -86,7 +86,6 @@ class Generator:
             mem_after_tok = torch.cuda.memory_allocated(device=x.device) / 1e9
             print_rank_0(f"Memory after tokenization: {mem_after_tok} GB")
             print_rank_0("Starting generation...")
-            torch.cuda.memory._record_memory_history(enabled=True)
             if input_string is not None:
                 print_rank_0("Prompt: " + input_string)
             else:
@@ -141,16 +140,10 @@ class Generator:
                 x = torch.cat([x, new_idx[:, None]], dim=-1)
 
         if verbose:
-            if isinstance(self.tokenizer, CharLevelTokenizer):
-                y = self.tokenizer.detokenize_batch(
-                    generation[:, : i + 1],
-                    # skip_special_tokens=skip_special_tokens,  # this isn't supported in the Char level tokenizer
-                )
-            else:
-                y = self.tokenizer.detokenize_batch(
-                    generation[:, : i + 1],
-                    skip_special_tokens=skip_special_tokens,
-                )                
+            kwargs = {}
+            if not isinstance(self.tokenizer, CharLevelTokenizer):
+                kwargs["skip_special_tokens"] = skip_special_tokens
+            y = self.tokenizer.detokenize_batch(generation[:, :i+1], **kwargs)
 
             for until in self.untils:
                 if until in y:
