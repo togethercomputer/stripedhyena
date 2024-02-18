@@ -375,7 +375,6 @@ class StripedHyena(nn.Module):
         return x, None
 
     def initialize_inference_params(self):
-        print_rank_0("Initializing inference params...")
         inference_params_dict = {
             "mha": InferenceParams(
                 max_seqlen=self.config.get("max_seqlen", 8192),
