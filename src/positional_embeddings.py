@@ -5,8 +5,9 @@ Wrappers for linearly interpolated rope embeddings to use inside of MHA layers o
 
 """
 
-import torch
 import copy
+
+import torch
 from einops import rearrange
 from flash_attn.layers.rotary import RotaryEmbedding
 from flash_attn.modules.mha import MHA
@@ -17,7 +18,7 @@ class LinearlyScaledRotaryEmbedding(RotaryEmbedding):
     def __init__(
         self,
         dim: int,
-        scaling_factor: float=1.,
+        scaling_factor: float = 1.0,
         base=10000.0,
         interleaved=False,
         scale_base=None,
@@ -30,9 +31,10 @@ class LinearlyScaledRotaryEmbedding(RotaryEmbedding):
             interleaved=interleaved,
             scale_base=scale_base,
             pos_idx_in_fp32=pos_idx_in_fp32,
-            device=device
+            device=device,
         )
         self._linear_scaling_factor = scaling_factor
+
     # adpated from: https://github.com/Dao-AILab/flash-attention/blob/43ceab630bc6c27712428da5a33fc9cb5c369d91/flash_attn/layers/rotary.py#L368
     def _update_cos_sin_cache(self, seqlen, device=None, dtype=None):
         # Reset the tables if the sequence length has changed,
@@ -74,8 +76,7 @@ class LinearlyScaledRotaryEmbedding(RotaryEmbedding):
                 self._sin_cached = torch.sin(freqs).to(dtype)
             else:
                 power = (
-                    torch.arange(seqlen, dtype=self.scale.dtype, device=self.scale.device)
-                    - seqlen // 2
+                    torch.arange(seqlen, dtype=self.scale.dtype, device=self.scale.device) - seqlen // 2
                 ) / self.scale_base
                 scale = self.scale.to(device=power.device) ** rearrange(power, "s -> s 1")
                 # We want the multiplication by scale to happen in fp32
@@ -84,32 +85,26 @@ class LinearlyScaledRotaryEmbedding(RotaryEmbedding):
                 self._cos_k_cached = (torch.cos(freqs) / scale).to(dtype)
                 self._sin_k_cached = (torch.sin(freqs) / scale).to(dtype)
 
+
 # swap out RoPE of existing mha:
-def swap_mha_rope(
-    mha,
-    new_rope: torch.nn.Module=LinearlyScaledRotaryEmbedding,
-    kwargs_new_rope: dict=None
-):
+def swap_mha_rope(mha, new_rope: torch.nn.Module = LinearlyScaledRotaryEmbedding, kwargs_new_rope: dict = None):
     # determine mha dtype and device:
     dtype = mha.Wq.weight.dtype if mha.cross_attn else mha.Wqkv.weight.dtype
     device = mha.Wq.weight.device if mha.cross_attn else mha.Wqkv.weight.device
     # determine RoPE settings:
     kwargs_old_rope = dict(
-        dim = mha.rotary_emb.dim,
-        base = mha.rotary_emb.base,
-        interleaved = mha.rotary_emb.interleaved,
-        scale_base = mha.rotary_emb.scale_base,
-        pos_idx_in_fp32 = mha.rotary_emb.pos_idx_in_fp32,
-        device = mha.rotary_emb.inv_freq.device
+        dim=mha.rotary_emb.dim,
+        base=mha.rotary_emb.base,
+        interleaved=mha.rotary_emb.interleaved,
+        scale_base=mha.rotary_emb.scale_base,
+        pos_idx_in_fp32=mha.rotary_emb.pos_idx_in_fp32,
+        device=mha.rotary_emb.inv_freq.device,
     )
     # delete old RoPE:
     del mha.rotary_emb
     # create new RoPE:
-    kwargs_new_rope = kwargs_new_rope or {'scaling_factor': 1.0}
-    scaled_rope = new_rope(
-        **kwargs_new_rope,
-        **kwargs_old_rope
-    ).to(dtype)
+    kwargs_new_rope = kwargs_new_rope or {"scaling_factor": 1.0}
+    scaled_rope = new_rope(**kwargs_new_rope, **kwargs_old_rope).to(dtype)
     # attach new RoPE to mha:
     mha.rotary_emb = scaled_rope
     # make new sure RoPE is correctly registered:
