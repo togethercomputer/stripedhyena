@@ -41,7 +41,14 @@ class ParallelGatedMLP(nn.Module):
         super().__init__()
 
         multiple_of = config.get("inner_size_multiple_of", 64)
-        self.act = F.silu
+        self.act_type = config.get("mlp_activation", "gelu")
+        if self.act_type == "gelu":
+            self.act = F.gelu
+        elif self.act_type == "silu":
+            self.act = F.silu
+        else:
+            raise NotImplementedError
+
         self.multiple_of = multiple_of * config.model_parallel_size
 
         inner_size = int(2 * config.hidden_size * 4 / 3)
