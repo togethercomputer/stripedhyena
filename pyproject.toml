@@ -1,3 +1,19 @@
+ld-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stripedhyena"
+version = "0.2.0"
+description = "Model and inference code for beyond Transformer architectures"
+readme = "README.md"
+authors = [{ name = "Michael Poli"}]
+dependencies = [
+    "transformers",
+    "tokenizers",
+    "flash_attn>=2.0.0"
+]
+
 [tool.black]
 line-length = 119
 
@@ -5,4 +21,4 @@ line-length = 119
 profile = "black"
 line_length = 119
 combine_as_imports = true
-combine_star = true
+combine_star = true[tool.black]
