@@ -1,4 +1,4 @@
-ld-system]
+[build-system]
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
@@ -21,4 +21,4 @@ line-length = 119
 profile = "black"
 line_length = 119
 combine_as_imports = true
-combine_star = true[tool.black]
+combine_star = true
