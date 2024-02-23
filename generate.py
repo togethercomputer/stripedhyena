@@ -8,11 +8,11 @@ import os
 import torch
 import yaml
 
-from src.generation import Generator
-from src.model import StripedHyena
-from src.sample import sample
-from src.tokenizer import HFAutoTokenizer
-from src.utils import dotdict, print_rank_0
+from stripedhyena.generation import Generator
+from stripedhyena.model import StripedHyena
+from stripedhyena.sample import sample
+from stripedhyena.tokenizer import HFAutoTokenizer
+from stripedhyena.utils import dotdict, print_rank_0
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run StripedHyena Model")

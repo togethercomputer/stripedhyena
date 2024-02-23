@@ -7,10 +7,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from src.cache import InferenceParams, RecurrentInferenceParams
-from src.engine import HyenaInferenceEngine
-from src.layers import ParallelGatedMLP, RMSNorm, VocabParallelEmbedding
-from src.utils import column_split, print_rank_0
+from stripedhyena.cache import InferenceParams, RecurrentInferenceParams
+from stripedhyena.engine import HyenaInferenceEngine
+from stripedhyena.layers import ParallelGatedMLP, RMSNorm, VocabParallelEmbedding
+from stripedhyena.utils import column_split, print_rank_0
 
 try:
     from flash_attn.modules.mha import MHA
@@ -18,7 +18,7 @@ except ImportError:
     "flash_attn not installed"
 
 try:
-    from src.positional_embeddings import swap_mha_rope
+    from stripedhyena.positional_embeddings import swap_mha_rope
 except ImportError:
     "could not import swap_mha_rope from src.positional_embeddings"
 

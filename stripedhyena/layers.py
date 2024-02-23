@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from einops import rearrange
 from torch import Tensor
 
-from src.utils import grab_first_if_tuple
+from stripedhyena.utils import grab_first_if_tuple
 
 
 class RMSNorm(torch.nn.Module):
