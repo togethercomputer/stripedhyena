@@ -11,7 +11,7 @@ try:
     import conv1d_cpp
 except:
     pass
-from src.utils import column_split
+from stripedhyena.utils import column_split
 
 IIR_PREFILL_MODES = [
     "recurrence",

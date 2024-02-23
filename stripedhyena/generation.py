@@ -6,9 +6,9 @@
 
 import torch
 
-from src.sample import sample
-from src.tokenizer import CharLevelTokenizer
-from src.utils import print_rank_0
+from stripedhyena.sample import sample
+from stripedhyena.tokenizer import CharLevelTokenizer
+from stripedhyena.utils import print_rank_0
 
 
 class Generator:
