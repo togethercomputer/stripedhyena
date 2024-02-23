@@ -23,3 +23,6 @@ profile = "black"
 line_length = 119
 combine_as_imports = true
 combine_star = true
+
+[tool.setuptools]
+packages = ['stripedhyena']
