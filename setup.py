@@ -8,14 +8,13 @@ with open('requirements.txt') as f:
 
 setup(
     name='stripedhyena',
-    version='0.2.0',
-    description='StripedHyena',
+    version='0.2.1',
+    description='Model and inference code for beyond Transformer architectures',
     long_description=readme,
     long_description_content_type='text/markdown',
-    author='together.ai',
+    author='Michael Poli',
     url='http://github.com/togethercomputer/stripedhyena',
     license='Apache-2.0',
-    packages=find_packages(),
+    packages=find_packages(where="stripedhyena"),
     install_requires=requirements,
-    python_requires='>=3.6',
 )
