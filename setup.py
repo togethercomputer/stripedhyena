@@ -1,12 +1,10 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 with open('README.md') as f:
     readme = f.read()
 
 with open('requirements.txt') as f:
     requirements = f.read().split('\n')
-
-sources = {'stripedhyena': 'src'}
 
 setup(
     name='stripedhyena',
@@ -17,8 +15,7 @@ setup(
     author='together.ai',
     url='http://github.com/togethercomputer/stripedhyena',
     license='Apache-2.0',
-    packages=sources.keys(),
-    package_dir=sources,
+    packages=find_packages(),
     install_requires=requirements,
     python_requires='>=3.6',
 )
