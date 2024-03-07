@@ -8,9 +8,28 @@ Minimal implementation of a StripedHyena model.
 
 ## About
 
-One of the focus areas at Together Research is new architectures for long context, improved training, and inference performance over the Transformer architecture. Spinning out of a research program from our team and academic collaborators, with roots in **signal processing-inspired sequence models**, we are excited to introduce the **StripedHyena** models. 
+StripedHyena is the **first alternative model architecture competitive with the best open-source Transformers** of similar sizes in short and long-context evaluations.
 
-StripedHyena is the **first alternative model competitive with the best open-source Transformers** of similar sizes in short and long-context evaluations.
+StripedHyena is a deep signal processing, hybrid architecture composed of rotary (grouped) attention and gated convolutions arranged in [Hyena](https://arxiv.org/abs/2302.10866) blocks, with improved scaling over decoder-only Transformers. 
+StripedHyena is designed to leverage the specialization of each of its layer classes, with Hyena layers implementing the bulk of the computation required for sequence processing and attention layers supplementing the ability to perform targeted pattern recall.
+
+- Efficient autoregressive generation via a recurrent mode (>500k generation with a single 80GB GPU)
+- Low latency, faster decoding and higher throughput than Transformers.
+- Significantly faster training and finetuning at long context (>3x at 131k)
+- Improved scaling laws over state-of-the-art architectures (e.g., Transformer++) on both natural language and biological sequences.
+- Robust to training beyond the compute-optimal frontier e.g., training way beyond Chinchilla-optimal token amounts
+
+## Models
+
+### Biology: Evo-1-7B
+
+**Evo** is a **biological foundation model** capable of long-context modeling and design.
+
+Evo uses the StripedHyena architecture to enable modeling of sequences at a single-nucleotide, byte-level resolution with near-linear scaling of compute and memory relative to context length. Evo has 7 billion parameters and is trained on OpenGenome, a prokaryotic whole-genome dataset containing ~300 billion tokens.
+
+- Read more here in the [preprint](https://www.biorxiv.org/content/10.1101/2024.02.27.582234v1.full.pdf).
+
+### Language: StripedHyena-7B
 
 **StripedHyena-Nous-7B (SH-N 7B)** is our **chat model** for this release, and was developed with our collaborators at [Nous Research](https://nousresearch.com/).
 
@@ -20,13 +39,6 @@ StripedHyena is the **first alternative model competitive with the best open-sou
 
 SH-N 7B uses this prompt format: `### Instruction:\n{prompt}\n\n### Response:\n{response}`
 
-### Model Architecture
-
-StripedHyena is a hybrid architecture composed of multi-head, grouped-query attention and gated convolutions arranged in [Hyena](https://arxiv.org/abs/2302.10866) blocks, different from traditional decoder-only Transformers.  
-  - Costant memory decoding in Hyena blocks via representation of convolutions as state-space models (modal or canonical form), or as truncated filters.
-  - Low latency, faster decoding and higher throughput than Transformers. 
-  - Improvement to training and inference-optimal scaling laws, compared to optimized Transformer architectures such as Llama-2.
-  - Trained on sequences of up to 32k, allowing it to process longer prompts.
 
 ## Quick Start
 
